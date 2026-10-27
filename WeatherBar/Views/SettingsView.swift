@@ -1,5 +1,4 @@
 import SwiftUI
-import AppKit
 
 struct SettingsView: View {
     var body: some View {
@@ -20,13 +19,6 @@ struct SettingsView: View {
 struct GeneralSettingsView: View {
     @EnvironmentObject private var prefs: PreferencesStore
     @EnvironmentObject private var store: WeatherStore
-    @State private var isCheckingForUpdates = false
-    @State private var updateMessage = "尚未检查"
-    @State private var updateDownloadURL: URL?
-
-    private var currentVersion: String {
-        Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "0.0.0"
-    }
 
     var body: some View {
         Form {
@@ -67,29 +59,10 @@ struct GeneralSettingsView: View {
             Toggle("开机启动", isOn: $prefs.launchAtLogin)
 
             Section("软件更新") {
-                VStack(alignment: .leading, spacing: 8) {
-                    HStack {
-                        Text("当前版本 v\(currentVersion)")
-                        Spacer()
-                        if let updateDownloadURL {
-                            Button("下载更新") {
-                                NSWorkspace.shared.open(updateDownloadURL)
-                            }
-                        } else {
-                            Button(isCheckingForUpdates ? "正在检查…" : "检查更新") {
-                                Task { await checkForUpdates() }
-                            }
-                            .disabled(isCheckingForUpdates)
-                        }
-                    }
-
-                    Text(updateMessage)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                    Text("下载后打开 dmg，将 WeatherBar 拖到 Applications 并选择替换。")
-                        .font(.caption)
-                        .foregroundStyle(.tertiary)
-                }
+                Label("后台自动检查并静默安装更新", systemImage: "arrow.down.circle")
+                Text("更新会在后台下载，并在下次退出应用时安装。")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
             }
 
             HStack {
@@ -107,66 +80,6 @@ struct GeneralSettingsView: View {
         .formStyle(.grouped)
         .padding(12)
     }
-
-    @MainActor
-    private func checkForUpdates() async {
-        isCheckingForUpdates = true
-        updateDownloadURL = nil
-        updateMessage = "正在检查 GitHub 最新版本…"
-        defer { isCheckingForUpdates = false }
-
-        do {
-            var request = URLRequest(url: URL(string: "https://api.github.com/repos/cat-clever/weatherbar/releases/latest")!)
-            request.setValue("application/vnd.github+json", forHTTPHeaderField: "Accept")
-            request.setValue("WeatherBar/\(currentVersion)", forHTTPHeaderField: "User-Agent")
-            let (data, response) = try await URLSession.shared.data(for: request)
-            guard let response = response as? HTTPURLResponse,
-                  (200..<300).contains(response.statusCode) else {
-                throw UpdateCheckError.invalidResponse
-            }
-
-            let release = try JSONDecoder().decode(GitHubRelease.self, from: data)
-            let latestVersion = release.tagName.hasPrefix("v")
-                ? String(release.tagName.dropFirst()) : release.tagName
-            guard latestVersion.compare(currentVersion, options: .numeric) == .orderedDescending else {
-                updateMessage = "当前已是最新版本。"
-                return
-            }
-
-            updateDownloadURL = release.assets.first(where: {
-                $0.name.hasPrefix("WeatherBar-") && $0.name.hasSuffix(".dmg")
-            })?.browserDownloadURL
-            updateMessage = updateDownloadURL == nil
-                ? "发现 v\(latestVersion)，但 Release 中没有找到 dmg 安装包。"
-                : "发现新版本 v\(latestVersion)。"
-        } catch {
-            updateMessage = "检查更新失败，请检查网络后重试。"
-        }
-    }
-}
-
-private struct GitHubRelease: Decodable {
-    struct Asset: Decodable {
-        let name: String
-        let browserDownloadURL: URL
-
-        enum CodingKeys: String, CodingKey {
-            case name
-            case browserDownloadURL = "browser_download_url"
-        }
-    }
-
-    let tagName: String
-    let assets: [Asset]
-
-    enum CodingKeys: String, CodingKey {
-        case tagName = "tag_name"
-        case assets
-    }
-}
-
-private enum UpdateCheckError: Error {
-    case invalidResponse
 }
 
 // MARK: - 地区

@@ -82,14 +82,42 @@ jobs:
           done
 
       - name: Package
+        env:
+          SPARKLE_PRIVATE_KEY: ${{ secrets.SPARKLE_PRIVATE_KEY }}
         run: |
           set -euo pipefail
           VERSION="${{ steps.ver.outputs.version }}"
           APP="build/Build/Products/Release/WeatherBar.app"
           mkdir -p dist
           cp -R "$APP" dist/
-          codesign --force --deep --sign - "dist/WeatherBar.app"
+          codesign --force --sign - --entitlements WeatherBar/WeatherBar.entitlements "dist/WeatherBar.app"
+          codesign --verify --deep --strict --verbose=2 "dist/WeatherBar.app"
           (cd dist && ditto -c -k --keepParent WeatherBar.app "WeatherBar-${VERSION}.zip")
+
+          # Sparkle signatures allow installed apps to verify and install updates silently.
+          test -n "$SPARKLE_PRIVATE_KEY" || { echo "::error::SPARKLE_PRIVATE_KEY secret is required"; exit 1; }
+          SIGN_UPDATE="$(find build/SourcePackages/artifacts -name sign_update -type f -print -quit)"
+          test -x "$SIGN_UPDATE" || { echo "::error::Sparkle sign_update tool not found"; exit 1; }
+          ARCHIVE="dist/WeatherBar-${VERSION}.zip"
+          SIGNATURE="$(printf '%s' "$SPARKLE_PRIVATE_KEY" | "$SIGN_UPDATE" --ed-key-file - -p "$ARCHIVE")"
+          LENGTH="$(stat -f%z "$ARCHIVE")"
+          PUB_DATE="$(date -u '+%a, %d %b %Y %H:%M:%S %z')"
+          cat > dist/appcast.xml <<EOF
+          <?xml version="1.0" encoding="utf-8"?>
+          <rss version="2.0" xmlns:sparkle="http://www.andymatuschak.org/xml-namespaces/sparkle">
+            <channel>
+              <title>WeatherBar</title>
+              <link>https://github.com/cat-clever/weatherbar/releases</link>
+              <description>WeatherBar software updates</description>
+              <language>zh-cn</language>
+              <item>
+                <title>WeatherBar ${VERSION}</title>
+                <pubDate>${PUB_DATE}</pubDate>
+                <enclosure url="https://github.com/cat-clever/weatherbar/releases/download/v${VERSION}/WeatherBar-${VERSION}.zip" sparkle:version="${GITHUB_RUN_NUMBER}" sparkle:shortVersionString="${VERSION}" sparkle:edSignature="${SIGNATURE}" length="${LENGTH}" type="application/octet-stream" />
+              </item>
+            </channel>
+          </rss>
+          EOF
 
           # dmg：App + Applications 快捷方式（拖拽即安装）
           STAGING=$(mktemp -d)
@@ -114,3 +142,4 @@ jobs:
             dist/WeatherBar-${{ steps.ver.outputs.version }}.dmg
             dist/WeatherBar-${{ steps.ver.outputs.version }}.zip
             dist/SHA256SUMS.txt
+            dist/appcast.xml

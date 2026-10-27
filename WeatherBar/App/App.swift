@@ -12,6 +12,7 @@ final class AppEnvironment {
     let router = PopoverRouter()
 
     private(set) lazy var store = WeatherStore(prefs: prefs, places: places)
+    private(set) lazy var updater = AppUpdater()
     private(set) lazy var settingsWindowController = SettingsWindowController(
         prefs: prefs, places: places, store: store
     )
@@ -38,6 +39,7 @@ final class AppEnvironment {
     private init() {}
 
     func start() {
+        _ = updater
         statusController.install()
         statusController.onShowOnboarding = { [weak self] in
             self?.onboarding.show()

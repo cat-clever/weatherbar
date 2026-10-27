@@ -107,8 +107,8 @@ jobs:
         run: |
           set -euo pipefail
           APP="build/Build/Products/$CONFIG/WeatherBar.app"
-          codesign --force --deep --sign - "$APP"
-          codesign --verify --verbose=2 "$APP"
+          codesign --force --sign - --entitlements WeatherBar/WeatherBar.entitlements "$APP"
+          codesign --verify --deep --strict --verbose=2 "$APP"
 
       - name: Package (zip + dmg + sha256)
         id: package
