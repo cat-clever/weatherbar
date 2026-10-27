@@ -29,11 +29,10 @@ enum Theme {
     static let onboardingBackground = Color(hex: 0x26254F)
 
     static let panelWidth: CGFloat = 360
-    static let panelWidthExpanded: CGFloat = 672
     static let panelHeight: CGFloat = 640
-    static let leftColumnWidth: CGFloat = 300
-    static let rightColumnWidth: CGFloat = 340
-    static let columnGap: CGFloat = 12
+    /// 悬停时出现在面板左侧的独立浮窗
+    static let leftPanelWidth: CGFloat = 320
+    static let leftPanelGap: CGFloat = 8
     static let pagePadding: CGFloat = 10
     static let blockGap: CGFloat = 10
     static let cardRadius: CGFloat = 12

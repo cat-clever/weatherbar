@@ -14,16 +14,41 @@ enum PopoverRoute: Equatable {
 @MainActor
 final class PopoverRouter: ObservableObject {
     @Published var route: PopoverRoute = .main
-    /// 鼠标悬停实况区时展开左栏
+    /// 鼠标悬停实况区时，在左侧弹出独立的详情浮窗
     @Published var expanded = false
     var onOpenSettings: (() -> Void)?
 
+    private var collapseTask: Task<Void, Never>?
+
     func reset() {
         route = .main
-        expanded = false
+        collapseNow()
     }
 
     func openSettings() { onOpenSettings?() }
+
+    /// 立即展开（或保持展开）
+    func expand() {
+        collapseTask?.cancel()
+        collapseTask = nil
+        if !expanded { expanded = true }
+    }
+
+    /// 延迟收起：给鼠标从面板移到左浮窗留出时间
+    func scheduleCollapse(after nanoseconds: UInt64 = 220_000_000) {
+        collapseTask?.cancel()
+        collapseTask = Task { @MainActor [weak self] in
+            try? await Task.sleep(nanoseconds: nanoseconds)
+            guard !Task.isCancelled else { return }
+            self?.expanded = false
+        }
+    }
+
+    func collapseNow() {
+        collapseTask?.cancel()
+        collapseTask = nil
+        if expanded { expanded = false }
+    }
 }
 
 // MARK: - 状态栏控制器
@@ -38,7 +63,9 @@ final class StatusItemController: NSObject {
 
     private let statusItem: NSStatusItem
     private let popover = NSPopover()
+    private let leftPanel = LeftPanelController()
     private var cancellables = Set<AnyCancellable>()
+    private var closeObserver: NSObjectProtocol?
 
     var onShowOnboarding: (() -> Void)?
     var onCheckForUpdates: (() -> Void)?
@@ -85,21 +112,42 @@ final class StatusItemController: NSObject {
             }
             .store(in: &cancellables)
 
-        // 悬停展开时同步调整浮窗宽度
+        // 悬停展开时在面板左侧弹出独立浮窗
         router.$expanded
             .removeDuplicates()
             .receive(on: RunLoop.main)
             .sink { [weak self] expanded in
-                self?.resizePopover(expanded: expanded)
+                self?.updateLeftPanel(expanded: expanded)
             }
             .store(in: &cancellables)
+
+        // 面板关闭时收起左浮窗（点别处关掉 popover 的情况）
+        closeObserver = NotificationCenter.default.addObserver(
+            forName: NSPopover.didCloseNotification, object: popover, queue: .main
+        ) { [weak self] _ in
+            Task { @MainActor in
+                self?.leftPanel.hide()
+                self?.router.collapseNow()
+            }
+        }
     }
 
-    private func resizePopover(expanded: Bool) {
-        guard popover.isShown else { return }
-        let width = expanded ? Theme.panelWidthExpanded : Theme.panelWidth
-        popover.contentSize = NSSize(width: width, height: Theme.panelHeight)
-        popover.contentViewController?.view.frame.size = NSSize(width: width, height: Theme.panelHeight)
+    private func updateLeftPanel(expanded: Bool) {
+        guard expanded,
+              popover.isShown,
+              let parent = popover.contentViewController?.view.window else {
+            leftPanel.hide()
+            return
+        }
+
+        leftPanel.show(
+            beside: parent,
+            content: LeftPanelView()
+                .environmentObject(store)
+                .environmentObject(places)
+                .environmentObject(prefs)
+                .environmentObject(router)
+        )
     }
 
     // MARK: 渲染
