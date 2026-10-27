@@ -297,6 +297,13 @@ struct AstroInfo: Codable, Sendable {
     var daylightSeconds: Double?
     var daylightDelta: Double?
 
+    // 当前天体位置（老缓存里没有，解码为 nil）
+    var sunAltitude: Double?
+    var sunAzimuth: Double?
+    var sunDistanceKm: Double?
+    var moonAltitude: Double?
+    var moonAzimuth: Double?
+
     static let empty = AstroInfo(moonPhase: MoonPhase(age: 0, illumination: 0, distanceKm: 384_400))
 }
 

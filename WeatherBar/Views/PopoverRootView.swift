@@ -32,32 +32,53 @@ struct PopoverRootView: View {
 
     private var mainContent: some View {
         ScrollView {
-            VStack(spacing: Theme.blockGap) {
-                if let snapshot = store.snapshot {
-                    CurrentHeaderView(snapshot: snapshot)
-
-                    if router.route == .regionSwitcher {
-                        RegionSwitcherView()
-                    }
-
-                    HourlyStripView(hours: snapshot.hourly, now: Date())
-
-                    DailyListView(days: snapshot.daily)
-
-                    SunMoonPanel(astro: snapshot.astro)
-
-                    if !snapshot.hourly.isEmpty {
-                        TrendChartsView(hours: snapshot.hourly)
-                    }
-
-                    footer(snapshot)
-                } else {
-                    placeholder
-                }
+            HStack(alignment: .top, spacing: Theme.columnGap) {
+                leftColumn
+                rightColumn
             }
             .padding(Theme.pagePadding)
         }
         .scrollIndicators(.hidden)
+    }
+
+    /// 左栏：日月轨迹、月相、太阳、降水
+    private var leftColumn: some View {
+        VStack(spacing: Theme.blockGap) {
+            if let snapshot = store.snapshot {
+                SkyPathCard(astro: snapshot.astro, place: snapshot.place)
+                MoonDetailCard(astro: snapshot.astro)
+                SunDetailCard(astro: snapshot.astro)
+                PrecipitationCard(current: snapshot.current, hourly: snapshot.hourly)
+                SunMoonPanel(astro: snapshot.astro)
+            }
+        }
+        .frame(width: Theme.leftColumnWidth, alignment: .top)
+    }
+
+    /// 右栏：实况、逐小时、逐日、曲线
+    private var rightColumn: some View {
+        VStack(spacing: Theme.blockGap) {
+            if let snapshot = store.snapshot {
+                CurrentHeaderView(snapshot: snapshot)
+
+                if router.route == .regionSwitcher {
+                    RegionSwitcherView()
+                }
+
+                HourlyStripView(hours: snapshot.hourly, now: Date())
+
+                DailyListView(days: snapshot.daily)
+
+                if !snapshot.hourly.isEmpty {
+                    TrendChartsView(hours: snapshot.hourly)
+                }
+
+                footer(snapshot)
+            } else {
+                placeholder
+            }
+        }
+        .frame(width: Theme.rightColumnWidth, alignment: .top)
     }
 
     private var placeholder: some View {

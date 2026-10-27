@@ -2,6 +2,13 @@ import Foundation
 
 // MARK: - 天文计算（太阳 / 月亮 / 月相）
 
+/// 天体在地平坐标系中的位置
+struct SkyPosition: Sendable {
+    var altitude: Double     // 地平高度（度），负值为地平线下
+    var azimuth: Double      // 方位角（度），0=正北，顺时针
+    var distanceKm: Double
+}
+
 struct AstroCalculator {
 
     private let rad = Double.pi / 180
@@ -39,6 +46,9 @@ struct AstroCalculator {
         let moonTimes = moonRiseSet(dayStart: dayStart, lat: place.latitude, lon: place.longitude)
         let phase = moonPhase(for: date)
 
+        let sunNow = sunPosition(date, lat: place.latitude, lon: place.longitude)
+        let moonNow = moonSkyPosition(date, lat: place.latitude, lon: place.longitude)
+
         var daylight: Double?
         if let sunrise, let sunset {
             daylight = sunset.timeIntervalSince(sunrise)
@@ -74,8 +84,91 @@ struct AstroCalculator {
             blueHourMorning: blueMorning,
             blueHourEvening: blueEveningEnd,
             daylightSeconds: daylight,
-            daylightDelta: delta
+            daylightDelta: delta,
+            sunAltitude: sunNow.altitude,
+            sunAzimuth: sunNow.azimuth,
+            sunDistanceKm: sunNow.distanceKm,
+            moonAltitude: moonNow.altitude,
+            moonAzimuth: moonNow.azimuth
         )
+    }
+
+    // MARK: - 当前天体位置（供左栏卡片使用）
+
+    /// 太阳当前的地平高度 / 方位 / 地日距离
+    func sunPosition(_ date: Date, lat: Double, lon: Double) -> SkyPosition {
+        let jd = julianDay(date)
+        let params = solarParams(jd)
+        let altitude = Self.altitude(decl: params.decl, hourAngle: hourAngle(date, lon: lon, eqTime: params.eqTime), lat: lat)
+        let azimuth = Self.azimuth(decl: params.decl, hourAngle: hourAngle(date, lon: lon, eqTime: params.eqTime), lat: lat)
+        return SkyPosition(altitude: altitude, azimuth: azimuth, distanceKm: sunDistanceKm(jd))
+    }
+
+    /// 太阳在任意时刻的地平高度（画轨迹曲线用）
+    func sunAltitude(_ date: Date, lat: Double, lon: Double) -> Double {
+        let params = solarParams(julianDay(date))
+        return Self.altitude(decl: params.decl, hourAngle: hourAngle(date, lon: lon, eqTime: params.eqTime), lat: lat)
+    }
+
+    /// 月亮当前的地平高度 / 方位 / 地月距离
+    func moonSkyPosition(_ date: Date, lat: Double, lon: Double) -> SkyPosition {
+        let jd = julianDay(date)
+        let pos = moonPosition(jd)
+        let hourAngle = localSidereal(jd) + lon - pos.ra / rad
+        return SkyPosition(altitude: Self.altitude(decl: pos.dec / rad, hourAngle: hourAngle, lat: lat),
+                           azimuth: Self.azimuth(decl: pos.dec / rad, hourAngle: hourAngle, lat: lat),
+                           distanceKm: pos.distance)
+    }
+
+    /// 月亮在任意时刻的地平高度（画轨迹曲线用）
+    func moonAltitudeAt(_ date: Date, lat: Double, lon: Double) -> Double {
+        moonAltitude(date, lat: lat, lon: lon)
+    }
+
+    // MARK: - 位置换算
+
+    /// 时角（度）：正午为 0，下午为正
+    private func hourAngle(_ date: Date, lon: Double, eqTime: Double) -> Double {
+        let utcMinutes = date.timeIntervalSince1970.truncatingRemainder(dividingBy: 86_400) / 60
+        var solarMinutes = utcMinutes + 4 * lon + eqTime
+        solarMinutes = solarMinutes.truncatingRemainder(dividingBy: 1440)
+        if solarMinutes < 0 { solarMinutes += 1440 }
+        return solarMinutes / 4 - 180
+    }
+
+    /// 格林尼治恒星时（度）
+    private func localSidereal(_ jd: Double) -> Double {
+        let d = jd - 2_451_545.0
+        return (280.16 + 360.9856235 * d).truncatingRemainder(dividingBy: 360)
+    }
+
+    private static func altitude(decl: Double, hourAngle: Double, lat: Double) -> Double {
+        let rad = Double.pi / 180
+        let latRad = lat * rad
+        let declRad = decl * rad
+        let h = hourAngle * rad
+        let sinAlt = sin(latRad) * sin(declRad) + cos(latRad) * cos(declRad) * cos(h)
+        return asin(max(-1, min(1, sinAlt))) / rad
+    }
+
+    private static func azimuth(decl: Double, hourAngle: Double, lat: Double) -> Double {
+        let rad = Double.pi / 180
+        let latRad = lat * rad
+        let declRad = decl * rad
+        let h = hourAngle * rad
+        let y = sin(h)
+        let x = cos(h) * sin(latRad) - tan(declRad) * cos(latRad)
+        var az = atan2(y, x) / rad + 180
+        if az < 0 { az += 360 }
+        if az >= 360 { az -= 360 }
+        return az
+    }
+
+    /// 地日距离（公里）：1 AU = 149,597,870.7 km
+    private func sunDistanceKm(_ jd: Double) -> Double {
+        let g = (357.5291 + 0.98560028 * (jd - 2_451_545.0)) * rad
+        let au = 1.00014 - 0.01671 * cos(g) - 0.00014 * cos(2 * g)
+        return au * 149_597_870.7
     }
 
     // MARK: - 太阳

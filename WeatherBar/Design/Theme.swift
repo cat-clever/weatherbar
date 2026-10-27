@@ -27,7 +27,10 @@ enum Theme {
 
     static let onboardingBackground = Color(hex: 0x26254F)
 
-    static let panelWidth: CGFloat = 360
+    static let panelWidth: CGFloat = 652
+    static let leftColumnWidth: CGFloat = 300
+    static let rightColumnWidth: CGFloat = 320
+    static let columnGap: CGFloat = 12
     static let pagePadding: CGFloat = 10
     static let blockGap: CGFloat = 10
     static let cardRadius: CGFloat = 12

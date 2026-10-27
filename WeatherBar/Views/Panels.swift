@@ -231,7 +231,6 @@ struct SunMoonPanel: View {
 
             HStack(spacing: 0) {
                 timeCell(icon: "moonrise.fill", label: "月出", value: Formatters.clockLabel(astro.moonrise))
-                timeCell(icon: "moon.fill", label: "月相", value: astro.moonPhase.name)
                 timeCell(icon: "moonset.fill", label: "月落", value: Formatters.clockLabel(astro.moonset))
             }
 
@@ -264,22 +263,6 @@ struct SunMoonPanel: View {
                 magicRow("黄金时光", astro.goldenHourMorning, Theme.accentSun)
                 magicRow("黄金时光", astro.goldenHourEvening, Theme.accentSun)
                 magicRow("蓝色时光", astro.blueHourEvening, Theme.accentBlue)
-            }
-
-            Divider().overlay(Theme.cardStroke)
-
-            HStack(spacing: 4) {
-                Text("月相")
-                    .font(.system(size: 12))
-                    .foregroundStyle(Theme.textSecondary)
-                Spacer()
-                Text(String(format: "%.1f 天 · %.0f%% · %.0f 公里",
-                            astro.moonPhase.age,
-                            astro.moonPhase.illumination * 100,
-                            astro.moonPhase.distanceKm))
-                    .font(.system(size: 12, weight: .medium))
-                    .monospacedDigit()
-                    .foregroundStyle(Theme.textPrimary)
             }
         }
         .card()
