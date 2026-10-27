@@ -60,7 +60,7 @@ final class QWeatherProvider: WeatherProvider {
             code: WeatherCodeMapper.wmo(fromQWeather: now.now.icon)
         )
 
-        let hourPoints: [HourPoint] = hourly.hourly.prefix(max(hours, 12)).compactMap { h in
+        let hourPoints: [HourPoint] = hourly.hourly.prefix(max(hours, 12)).compactMap { h -> HourPoint? in
             guard let date = WallClock.date(from: String(h.fxTime.prefix(16))) else { return nil }
             return HourPoint(
                 date: date,
@@ -72,7 +72,7 @@ final class QWeatherProvider: WeatherProvider {
             )
         }
 
-        let dayPoints: [DayPoint] = daily.daily.compactMap { d in
+        let dayPoints: [DayPoint] = daily.daily.compactMap { d -> DayPoint? in
             guard let date = WallClock.date(from: d.fxDate) else { return nil }
             return DayPoint(
                 date: date,

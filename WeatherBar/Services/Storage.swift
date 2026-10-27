@@ -1,4 +1,5 @@
 import Foundation
+import AppKit
 import Security
 import ServiceManagement
 
@@ -235,7 +236,4 @@ final class RefreshScheduler {
         observers.removeAll()
     }
 
-    deinit {
-        timer?.invalidate()
-    }
 }

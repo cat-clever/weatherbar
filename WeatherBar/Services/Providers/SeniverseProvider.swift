@@ -56,7 +56,7 @@ final class SeniverseProvider: WeatherProvider {
             code: WeatherCodeMapper.wmo(fromSeniverse: nowResult.now.code)
         )
 
-        let hourPoints: [HourPoint] = (hourly.results.first?.hourly ?? []).prefix(max(hours, 12)).compactMap { h in
+        let hourPoints: [HourPoint] = (hourly.results.first?.hourly ?? []).prefix(max(hours, 12)).compactMap { h -> HourPoint? in
             guard let date = WallClock.date(from: String(h.time.prefix(16))) else { return nil }
             return HourPoint(
                 date: date,
@@ -68,7 +68,7 @@ final class SeniverseProvider: WeatherProvider {
             )
         }
 
-        let dayPoints: [DayPoint] = (daily.results.first?.daily ?? []).compactMap { d in
+        let dayPoints: [DayPoint] = (daily.results.first?.daily ?? []).compactMap { d -> DayPoint? in
             guard let date = WallClock.date(from: d.date) else { return nil }
             return DayPoint(
                 date: date,
@@ -240,7 +240,7 @@ final class AMapProvider: WeatherProvider {
             code: WeatherCodeMapper.wmo(fromAMap: today?.dayweather ?? "")
         )
 
-        let dayPoints: [DayPoint] = casts.compactMap { c in
+        let dayPoints: [DayPoint] = casts.compactMap { c -> DayPoint? in
             guard let date = WallClock.date(from: c.date) else { return nil }
             return DayPoint(
                 date: date,

@@ -53,8 +53,9 @@ final class WeatherStore: ObservableObject {
 
     func refresh(force: Bool = false) async {
         refreshTask?.cancel()
-        let task = Task { [weak self] in
-            await self?.performRefresh(force: force)
+        let task = Task<Void, Never> { [weak self] in
+            guard let self else { return }
+            await self.performRefresh(force: force)
         }
         refreshTask = task
         await task.value

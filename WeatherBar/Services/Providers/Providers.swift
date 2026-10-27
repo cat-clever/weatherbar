@@ -98,7 +98,7 @@ enum ProviderError: LocalizedError {
 
 // MARK: - 协议
 
-protocol WeatherProvider: AnyObject, Sendable {
+protocol WeatherProvider: AnyObject {
     var id: ProviderID { get }
     var requiresAPIKey: Bool { get }
     var capabilities: ProviderCapabilities { get }
@@ -190,7 +190,7 @@ final class ProviderRegistry: @unchecked Sendable {
             order = fallbackOrder(for: place, excluding: nil)
         }
 
-        return order.compactMap { id in
+        return order.compactMap { id -> WeatherProvider? in
             guard let p = all[id], p.isConfigured(), !CircuitBreaker.shared.isOpen(id) else { return nil }
             return p
         }
