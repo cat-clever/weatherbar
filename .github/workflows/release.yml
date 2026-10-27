@@ -67,7 +67,7 @@ jobs:
             CURRENT_PROJECT_VERSION="$GITHUB_RUN_NUMBER" \
             CODE_SIGN_IDENTITY="-" \
             CODE_SIGNING_REQUIRED=NO \
-            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_ALLOWED=YES \
             build 2>&1 | xcbeautify --renderer github-actions
 
       - name: Verify universal binary
@@ -90,7 +90,6 @@ jobs:
           APP="build/Build/Products/Release/WeatherBar.app"
           mkdir -p dist
           cp -R "$APP" dist/
-          codesign --force --sign - --entitlements WeatherBar/WeatherBar.entitlements "dist/WeatherBar.app"
           codesign --verify --deep --strict --verbose=2 "dist/WeatherBar.app"
           (cd dist && ditto -c -k --keepParent WeatherBar.app "WeatherBar-${VERSION}.zip")
 
