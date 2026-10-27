@@ -33,7 +33,12 @@ final class AppUpdater: NSObject, ObservableObject {
     /// 当前版本（CFBundleShortVersionString）
     let currentVersion: String
 
-    private let controller: SPUStandardUpdaterController
+    // Sparkle 的 delegate 只能在构造 controller 时传入，所以用 lazy 延迟到 self 可用之后
+    private lazy var controller = SPUStandardUpdaterController(
+        startingUpdater: true,
+        updaterDelegate: self,
+        userDriverDelegate: nil
+    )
     private var observations: [NSKeyValueObservation] = []
 
     private static let dateFormatter: DateFormatter = {
@@ -47,18 +52,12 @@ final class AppUpdater: NSObject, ObservableObject {
 
     override init() {
         currentVersion = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "0.0.0"
-        controller = SPUStandardUpdaterController(
-            startingUpdater: true,
-            updaterDelegate: nil,
-            userDriverDelegate: nil
-        )
         super.init()
         configure()
     }
 
     private func configure() {
         let updater = controller.updater
-        updater.delegate = self
         syncFromUpdater()
 
         // canCheckForUpdates / lastUpdateCheckDate 支持 KVO，用来驱动界面刷新
