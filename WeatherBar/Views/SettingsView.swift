@@ -1,4 +1,5 @@
 import SwiftUI
+import AppKit
 
 struct SettingsView: View {
     var body: some View {
@@ -19,6 +20,7 @@ struct SettingsView: View {
 struct GeneralSettingsView: View {
     @EnvironmentObject private var prefs: PreferencesStore
     @EnvironmentObject private var store: WeatherStore
+    @EnvironmentObject private var updater: AppUpdater
 
     var body: some View {
         Form {
@@ -59,10 +61,61 @@ struct GeneralSettingsView: View {
             Toggle("开机启动", isOn: $prefs.launchAtLogin)
 
             Section("软件更新") {
-                Label("后台自动检查并静默安装更新", systemImage: "arrow.down.circle")
-                Text("更新会在后台下载，并在下次退出应用时安装。")
+                HStack(alignment: .center, spacing: 8) {
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text("当前版本 v\(updater.currentVersion)")
+                            .font(.system(size: 13, weight: .medium))
+                        Text(updater.statusText)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+
+                    Spacer(minLength: 8)
+
+                    if updater.isBusy {
+                        ProgressView()
+                            .controlSize(.small)
+                    }
+
+                    Button(updater.isBusy ? "更新中…" : "检查更新") {
+                        updater.checkForUpdates()
+                    }
+                    .disabled(updater.isBusy)
+                }
+
+                Toggle("自动检查更新", isOn: Binding(
+                    get: { updater.autoCheckEnabled },
+                    set: { updater.setAutoCheck($0) }
+                ))
+
+                Toggle("自动下载并安装", isOn: Binding(
+                    get: { updater.autoDownloadEnabled },
+                    set: { updater.setAutoDownload($0) }
+                ))
+                .disabled(!updater.autoCheckEnabled)
+
+                Text("更新包会直接下载并替换「应用程序」中的 WeatherBar，安装完成后自动重启，无需手动拖拽。")
                     .font(.caption)
                     .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+
+                if updater.isRunningFromTemporaryLocation {
+                    HStack(alignment: .top, spacing: 6) {
+                        Image(systemName: "exclamationmark.triangle.fill")
+                            .foregroundStyle(.orange)
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text("当前应用在临时位置运行，系统会阻止自动更新。请把它移到「应用程序」文件夹后重新打开。")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                                .fixedSize(horizontal: false, vertical: true)
+                            Button("在 Finder 中显示") {
+                                NSWorkspace.shared.activateFileViewerSelecting([Bundle.main.bundleURL])
+                            }
+                            .controlSize(.small)
+                        }
+                    }
+                }
             }
 
             HStack {

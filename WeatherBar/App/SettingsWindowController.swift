@@ -6,12 +6,14 @@ final class SettingsWindowController: ObservableObject {
     private let prefs: PreferencesStore
     private let places: PlaceStore
     private let store: WeatherStore
+    private let updater: AppUpdater
     private var window: NSWindow?
 
-    init(prefs: PreferencesStore, places: PlaceStore, store: WeatherStore) {
+    init(prefs: PreferencesStore, places: PlaceStore, store: WeatherStore, updater: AppUpdater) {
         self.prefs = prefs
         self.places = places
         self.store = store
+        self.updater = updater
     }
 
     func show() {
@@ -25,6 +27,7 @@ final class SettingsWindowController: ObservableObject {
             .environmentObject(prefs)
             .environmentObject(places)
             .environmentObject(store)
+            .environmentObject(updater)
         let controller = NSHostingController(rootView: content)
         let window = NSWindow(contentViewController: controller)
         window.title = "WeatherBar 设置"

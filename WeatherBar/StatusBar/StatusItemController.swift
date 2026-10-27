@@ -35,6 +35,7 @@ final class StatusItemController: NSObject {
     private var cancellables = Set<AnyCancellable>()
 
     var onShowOnboarding: (() -> Void)?
+    var onCheckForUpdates: (() -> Void)?
 
     init(store: WeatherStore, places: PlaceStore, prefs: PreferencesStore,
          router: PopoverRouter, settingsWindow: SettingsWindowController) {
@@ -186,6 +187,7 @@ final class StatusItemController: NSObject {
         menu.addItem(loginItem)
 
         menu.addItem(withTitle: "显示引导", action: #selector(showOnboarding), keyEquivalent: "").target = self
+        menu.addItem(withTitle: "检查更新…", action: #selector(checkForUpdates), keyEquivalent: "").target = self
         menu.addItem(.separator())
         menu.addItem(withTitle: "退出 WeatherBar", action: #selector(quit), keyEquivalent: "q").target = self
 
@@ -211,6 +213,10 @@ final class StatusItemController: NSObject {
 
     @objc private func showOnboarding() {
         onShowOnboarding?()
+    }
+
+    @objc private func checkForUpdates() {
+        onCheckForUpdates?()
     }
 
     @objc private func openSettings() {

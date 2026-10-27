@@ -14,7 +14,7 @@ final class AppEnvironment {
     private(set) lazy var store = WeatherStore(prefs: prefs, places: places)
     private(set) lazy var updater = AppUpdater()
     private(set) lazy var settingsWindowController = SettingsWindowController(
-        prefs: prefs, places: places, store: store
+        prefs: prefs, places: places, store: store, updater: updater
     )
 
     private(set) lazy var statusController: StatusItemController = {
@@ -41,6 +41,9 @@ final class AppEnvironment {
     func start() {
         _ = updater
         statusController.install()
+        statusController.onCheckForUpdates = { [weak self] in
+            self?.updater.checkForUpdates()
+        }
         statusController.onShowOnboarding = { [weak self] in
             self?.onboarding.show()
         }
@@ -77,6 +80,7 @@ struct WeatherBarApp: App {
                 .environmentObject(AppEnvironment.shared.prefs)
                 .environmentObject(AppEnvironment.shared.places)
                 .environmentObject(AppEnvironment.shared.store)
+                .environmentObject(AppEnvironment.shared.updater)
         }
     }
 }
