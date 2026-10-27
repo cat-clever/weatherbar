@@ -11,7 +11,30 @@ struct CurrentHeaderView: View {
 
     let snapshot: WeatherSnapshot
 
+    @State private var isHovering = false
+
+    /// 悬停或地区列表展开时，给整块实况区描一圈系统强调色，与原版一致
+    private var isHighlighted: Bool {
+        isHovering || router.route == .regionSwitcher
+    }
+
     var body: some View {
+        content
+            .contentShape(RoundedRectangle(cornerRadius: Theme.headerHighlightRadius, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: Theme.headerHighlightRadius, style: .continuous)
+                    .strokeBorder(Color(nsColor: .controlAccentColor), lineWidth: 1)
+                    .padding(-Theme.headerHighlightInset)
+                    .opacity(isHighlighted ? 1 : 0)
+            )
+            .onHover { hovering in
+                withAnimation(.easeOut(duration: 0.12)) {
+                    isHovering = hovering
+                }
+            }
+    }
+
+    private var content: some View {
         HStack(alignment: .top, spacing: 8) {
             VStack(alignment: .leading, spacing: 6) {
                 Text(Formatters.temperature(snapshot.current.temperature, unit: prefs.temperatureUnit))

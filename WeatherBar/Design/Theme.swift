@@ -31,6 +31,9 @@ enum Theme {
     static let pagePadding: CGFloat = 10
     static let blockGap: CGFloat = 10
     static let cardRadius: CGFloat = 12
+    /// 实况区悬停高亮：圆角与外扩距离（外扩要小于 pagePadding，避免被滚动区域裁掉）
+    static let headerHighlightRadius: CGFloat = 8
+    static let headerHighlightInset: CGFloat = 5
 }
 
 extension Color {
