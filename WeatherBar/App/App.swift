@@ -12,9 +12,15 @@ final class AppEnvironment {
     let router = PopoverRouter()
 
     private(set) lazy var store = WeatherStore(prefs: prefs, places: places)
+    private(set) lazy var settingsWindowController = SettingsWindowController(
+        prefs: prefs, places: places, store: store
+    )
 
     private(set) lazy var statusController: StatusItemController = {
-        StatusItemController(store: store, places: places, prefs: prefs, router: router)
+        StatusItemController(
+            store: store, places: places, prefs: prefs,
+            router: router, settingsWindow: settingsWindowController
+        )
     }()
 
     private(set) lazy var onboarding: OnboardingController = {

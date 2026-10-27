@@ -118,6 +118,8 @@ struct HourlyStripView: View {
                             .frame(width: 18, height: 3)
                     }
                     .frame(width: 44)
+                    .contentShape(Rectangle())
+                    .help("风速：\(Formatters.wind(hour.windSpeed, unit: prefs.windUnit)) · 湿度：\(hour.humidity)%")
                 }
             }
             .padding(.horizontal, 2)
@@ -181,6 +183,8 @@ struct DailyListView: View {
                         .fixedSize(horizontal: false, vertical: true)
                 }
                 .card(raised: index == 0)
+                .contentShape(Rectangle())
+                .help("最高风速：\(Formatters.wind(day.windMax, unit: prefs.windUnit)) · 阵风：\(Formatters.wind(day.gustMax, unit: prefs.windUnit))")
             }
         }
     }

@@ -14,8 +14,10 @@ enum PopoverRoute: Equatable {
 @MainActor
 final class PopoverRouter: ObservableObject {
     @Published var route: PopoverRoute = .main
+    var onOpenSettings: (() -> Void)?
 
     func reset() { route = .main }
+    func openSettings() { onOpenSettings?() }
 }
 
 // MARK: - 状态栏控制器
@@ -26,6 +28,7 @@ final class StatusItemController: NSObject {
     private let places: PlaceStore
     private let prefs: PreferencesStore
     private let router: PopoverRouter
+    private let settingsWindow: SettingsWindowController
 
     private let statusItem: NSStatusItem
     private let popover = NSPopover()
@@ -33,13 +36,16 @@ final class StatusItemController: NSObject {
 
     var onShowOnboarding: (() -> Void)?
 
-    init(store: WeatherStore, places: PlaceStore, prefs: PreferencesStore, router: PopoverRouter) {
+    init(store: WeatherStore, places: PlaceStore, prefs: PreferencesStore,
+         router: PopoverRouter, settingsWindow: SettingsWindowController) {
         self.store = store
         self.places = places
         self.prefs = prefs
         self.router = router
+        self.settingsWindow = settingsWindow
         self.statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
         super.init()
+        router.onOpenSettings = { [weak self] in self?.openSettingsWindow() }
     }
 
     var statusButton: NSStatusBarButton? { statusItem.button }
@@ -208,11 +214,13 @@ final class StatusItemController: NSObject {
     }
 
     @objc private func openSettings() {
+        openSettingsWindow()
+    }
+
+    private func openSettingsWindow() {
         popover.performClose(nil)
         NSApp.activate(ignoringOtherApps: true)
-        if !NSApp.sendAction(Selector(("showSettingsWindow:")), to: nil, from: nil) {
-            NSApp.sendAction(Selector(("showPreferencesWindow:")), to: nil, from: nil)
-        }
+        settingsWindow.show()
     }
 
     @objc private func quit() {

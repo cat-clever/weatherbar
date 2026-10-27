@@ -39,11 +39,7 @@ struct RegionSwitcherView: View {
                 Spacer()
 
                 Button {
-                    router.route = .main
-                    NSApp.activate(ignoringOtherApps: true)
-                    if !NSApp.sendAction(Selector(("showSettingsWindow:")), to: nil, from: nil) {
-                        NSApp.sendAction(Selector(("showPreferencesWindow:")), to: nil, from: nil)
-                    }
+                    router.openSettings()
                 } label: {
                     Text("⚙ 管理")
                 }
