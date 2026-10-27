@@ -1,4 +1,5 @@
 import SwiftUI
+import AppKit
 import Foundation
 
 // MARK: - 色板
@@ -27,9 +28,11 @@ enum Theme {
 
     static let onboardingBackground = Color(hex: 0x26254F)
 
-    static let panelWidth: CGFloat = 652
+    static let panelWidth: CGFloat = 360
+    static let panelWidthExpanded: CGFloat = 672
+    static let panelHeight: CGFloat = 640
     static let leftColumnWidth: CGFloat = 300
-    static let rightColumnWidth: CGFloat = 320
+    static let rightColumnWidth: CGFloat = 340
     static let columnGap: CGFloat = 12
     static let pagePadding: CGFloat = 10
     static let blockGap: CGFloat = 10
@@ -69,6 +72,37 @@ struct CardBackground: ViewModifier {
 extension View {
     func card(raised: Bool = false) -> some View {
         modifier(CardBackground(raised: raised))
+    }
+
+    /// 鼠标悬停时描一圈系统强调色，和原版一致
+    func hoverHighlight(radius: CGFloat = Theme.cardRadius,
+                        inset: CGFloat = 0,
+                        lineWidth: CGFloat = 1.5) -> some View {
+        modifier(HoverHighlightModifier(radius: radius, inset: inset, lineWidth: lineWidth))
+    }
+}
+
+struct HoverHighlightModifier: ViewModifier {
+    var radius: CGFloat = Theme.cardRadius
+    var inset: CGFloat = 0
+    var lineWidth: CGFloat = 1.5
+
+    @State private var isHovering = false
+
+    func body(content: Content) -> some View {
+        content
+            .overlay(
+                RoundedRectangle(cornerRadius: radius, style: .continuous)
+                    .strokeBorder(Color(nsColor: .controlAccentColor), lineWidth: lineWidth)
+                    .padding(-inset)
+                    .opacity(isHovering ? 1 : 0)
+                    .allowsHitTesting(false)
+            )
+            .onHover { hovering in
+                withAnimation(.easeOut(duration: 0.12)) {
+                    isHovering = hovering
+                }
+            }
     }
 }
 

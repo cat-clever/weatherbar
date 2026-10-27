@@ -24,6 +24,7 @@ struct SkyPathCard: View {
         }
         .frame(height: 172)
         .clipShape(RoundedRectangle(cornerRadius: Theme.cardRadius, style: .continuous))
+        .hoverHighlight()
     }
 
     // MARK: 背景 + 曲线
@@ -184,6 +185,7 @@ struct MoonDetailCard: View {
             RoundedRectangle(cornerRadius: Theme.cardRadius, style: .continuous)
                 .strokeBorder(Theme.cardStroke, lineWidth: 1)
         )
+        .hoverHighlight()
     }
 }
 
@@ -209,6 +211,7 @@ struct SunDetailCard: View {
             }
         }
         .card()
+        .hoverHighlight()
     }
 }
 
@@ -232,6 +235,7 @@ struct PrecipitationCard: View {
             valueRow("降水量", "\(decimal(current.precipitation, current.precipitation < 10 ? 1 : 0)) 毫米")
         }
         .card()
+        .hoverHighlight()
     }
 
     private func valueRow(_ label: String, _ value: String) -> some View {

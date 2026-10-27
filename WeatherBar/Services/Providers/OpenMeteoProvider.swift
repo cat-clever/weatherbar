@@ -26,7 +26,7 @@ final class OpenMeteoProvider: WeatherProvider {
             .init(name: "latitude", value: String(place.latitude)),
             .init(name: "longitude", value: String(place.longitude)),
             .init(name: "current", value: "temperature_2m,relative_humidity_2m,apparent_temperature,is_day,precipitation,weather_code,cloud_cover,pressure_msl,wind_speed_10m,wind_direction_10m,wind_gusts_10m"),
-            .init(name: "hourly", value: "temperature_2m,weather_code,precipitation_probability,dew_point_2m,visibility,uv_index,wind_speed_10m,relative_humidity_2m"),
+            .init(name: "hourly", value: "temperature_2m,weather_code,precipitation_probability,precipitation,dew_point_2m,visibility,uv_index,wind_speed_10m,relative_humidity_2m,pressure_msl,apparent_temperature,cloud_cover"),
             .init(name: "daily", value: "weather_code,temperature_2m_max,temperature_2m_min,sunrise,sunset,daylight_duration,uv_index_max,precipitation_probability_max,wind_speed_10m_max,wind_gusts_10m_max"),
             .init(name: "timezone", value: "auto"),
             .init(name: "forecast_days", value: String(max(days, 7))),
@@ -88,22 +88,30 @@ final class OpenMeteoProvider: WeatherProvider {
             let temperature2m: [Double?]
             let weatherCode: [Int?]
             let precipitationProbability: [Int?]
+            let precipitation: [Double?]
             let dewPoint2m: [Double?]
             let visibility: [Double?]
             let uvIndex: [Double?]
             let windSpeed10m: [Double?]
             let relativeHumidity2m: [Int?]
+            let pressureMsl: [Double?]
+            let apparentTemperature: [Double?]
+            let cloudCover: [Int?]
 
             enum CodingKeys: String, CodingKey {
                 case time
                 case temperature2m = "temperature_2m"
                 case weatherCode = "weather_code"
                 case precipitationProbability = "precipitation_probability"
+                case precipitation
                 case dewPoint2m = "dew_point_2m"
                 case visibility
                 case uvIndex = "uv_index"
                 case windSpeed10m = "wind_speed_10m"
                 case relativeHumidity2m = "relative_humidity_2m"
+                case pressureMsl = "pressure_msl"
+                case apparentTemperature = "apparent_temperature"
+                case cloudCover = "cloud_cover"
             }
         }
 
@@ -169,7 +177,13 @@ final class OpenMeteoProvider: WeatherProvider {
                     code: WeatherCode(raw: at(raw.hourly.weatherCode, i) ?? 2),
                     precipitationChance: at(raw.hourly.precipitationProbability, i) ?? 0,
                     windSpeed: at(raw.hourly.windSpeed10m, i) ?? 0,
-                    humidity: at(raw.hourly.relativeHumidity2m, i) ?? 0
+                    humidity: at(raw.hourly.relativeHumidity2m, i) ?? 0,
+                    pressureHPa: at(raw.hourly.pressureMsl, i),
+                    dewPoint: at(raw.hourly.dewPoint2m, i),
+                    uvIndex: at(raw.hourly.uvIndex, i),
+                    apparentTemperature: at(raw.hourly.apparentTemperature, i),
+                    precipitation: at(raw.hourly.precipitation, i),
+                    cloudCover: at(raw.hourly.cloudCover, i)
                 ))
             }
         }

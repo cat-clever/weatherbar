@@ -14,9 +14,15 @@ enum PopoverRoute: Equatable {
 @MainActor
 final class PopoverRouter: ObservableObject {
     @Published var route: PopoverRoute = .main
+    /// 鼠标悬停实况区时展开左栏
+    @Published var expanded = false
     var onOpenSettings: (() -> Void)?
 
-    func reset() { route = .main }
+    func reset() {
+        route = .main
+        expanded = false
+    }
+
     func openSettings() { onOpenSettings?() }
 }
 
@@ -78,6 +84,22 @@ final class StatusItemController: NSObject {
                 DispatchQueue.main.async { self?.render() }
             }
             .store(in: &cancellables)
+
+        // 悬停展开时同步调整浮窗宽度
+        router.$expanded
+            .removeDuplicates()
+            .receive(on: RunLoop.main)
+            .sink { [weak self] expanded in
+                self?.resizePopover(expanded: expanded)
+            }
+            .store(in: &cancellables)
+    }
+
+    private func resizePopover(expanded: Bool) {
+        guard popover.isShown else { return }
+        let width = expanded ? Theme.panelWidthExpanded : Theme.panelWidth
+        popover.contentSize = NSSize(width: width, height: Theme.panelHeight)
+        popover.contentViewController?.view.frame.size = NSSize(width: width, height: Theme.panelHeight)
     }
 
     // MARK: 渲染
@@ -149,9 +171,9 @@ final class StatusItemController: NSObject {
             .environmentObject(router)
 
         let controller = NSHostingController(rootView: root)
-        controller.view.frame.size = NSSize(width: Theme.panelWidth, height: 640)
+        controller.view.frame.size = NSSize(width: Theme.panelWidth, height: Theme.panelHeight)
         popover.contentViewController = controller
-        popover.contentSize = NSSize(width: Theme.panelWidth, height: 640)
+        popover.contentSize = NSSize(width: Theme.panelWidth, height: Theme.panelHeight)
         popover.show(relativeTo: button.bounds, of: button, preferredEdge: .minY)
         NSApp.activate(ignoringOtherApps: true)
     }

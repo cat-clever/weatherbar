@@ -243,6 +243,14 @@ struct HourPoint: Codable, Sendable, Identifiable {
     var precipitationChance: Int
     var windSpeed: Double
     var humidity: Int
+
+    // 曲线可切换的其余指标（老缓存 / 部分数据源可能没有）
+    var pressureHPa: Double?
+    var dewPoint: Double?
+    var uvIndex: Double?
+    var apparentTemperature: Double?
+    var precipitation: Double?
+    var cloudCover: Int?
 }
 
 struct DayPoint: Codable, Sendable, Identifiable {

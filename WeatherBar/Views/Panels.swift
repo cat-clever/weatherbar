@@ -31,6 +31,12 @@ struct CurrentHeaderView: View {
                 withAnimation(.easeOut(duration: 0.12)) {
                     isHovering = hovering
                 }
+                // 悬停实况区时展开左侧详情栏
+                if hovering, !router.expanded {
+                    withAnimation(.easeOut(duration: 0.16)) {
+                        router.expanded = true
+                    }
+                }
             }
     }
 
@@ -148,6 +154,7 @@ struct HourlyStripView: View {
             .padding(.horizontal, 2)
         }
         .card()
+        .hoverHighlight()
     }
 
     private func isDay(_ date: Date) -> Bool {
@@ -206,6 +213,7 @@ struct DailyListView: View {
                         .fixedSize(horizontal: false, vertical: true)
                 }
                 .card(raised: index == 0)
+                .hoverHighlight()
                 .contentShape(Rectangle())
                 .help("最高风速：\(Formatters.wind(day.windMax, unit: prefs.windUnit)) · 阵风：\(Formatters.wind(day.gustMax, unit: prefs.windUnit))")
             }
@@ -221,7 +229,7 @@ struct SunMoonPanel: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            sectionTitle("太阳与月亮")
+            PanelTitle("太阳与月亮")
 
             HStack(spacing: 0) {
                 timeCell(icon: "sunrise.fill", label: "日出", value: Formatters.clockLabel(astro.sunrise))
@@ -247,31 +255,9 @@ struct SunMoonPanel: View {
                     Spacer()
                 }
             }
-
-            Divider().overlay(Theme.cardStroke)
-
-            VStack(spacing: 3) {
-                twilightRow("民用", astro.civilDawn, astro.civilDusk)
-                twilightRow("航海", astro.nauticalDawn, astro.nauticalDusk)
-                twilightRow("天文", astro.astronomicalDawn, astro.astronomicalDusk)
-            }
-
-            Divider().overlay(Theme.cardStroke)
-
-            VStack(spacing: 3) {
-                magicRow("蓝色时光", astro.blueHourMorning, Theme.accentBlue)
-                magicRow("黄金时光", astro.goldenHourMorning, Theme.accentSun)
-                magicRow("黄金时光", astro.goldenHourEvening, Theme.accentSun)
-                magicRow("蓝色时光", astro.blueHourEvening, Theme.accentBlue)
-            }
         }
         .card()
-    }
-
-    private func sectionTitle(_ text: String) -> some View {
-        Text(text)
-            .font(.system(size: 12, weight: .semibold))
-            .foregroundStyle(Theme.accentBlue)
+        .hoverHighlight()
     }
 
     private func timeCell(icon: String, label: String, value: String) -> some View {
@@ -289,38 +275,78 @@ struct SunMoonPanel: View {
         }
         .frame(maxWidth: .infinity)
     }
+}
 
-    private func twilightRow(_ label: String, _ dawn: Date?, _ dusk: Date?) -> some View {
-        HStack(spacing: 4) {
-            Image(systemName: "person.fill")
-                .font(.system(size: 9))
-                .foregroundStyle(Theme.textTertiary)
-            Text(label)
-                .font(.system(size: 11.5))
-                .foregroundStyle(Theme.textSecondary)
-            Spacer()
-            Text(Formatters.clockLabel(dawn))
-                .font(.system(size: 11.5, weight: .medium))
-                .monospacedDigit()
-            Text("→")
-                .font(.system(size: 10))
-                .foregroundStyle(Theme.textTertiary)
-            Text(Formatters.clockLabel(dusk))
-                .font(.system(size: 11.5, weight: .medium))
-                .monospacedDigit()
+// MARK: - 黎明
+
+struct TwilightPanel: View {
+    let astro: AstroInfo
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 7) {
+            PanelTitle("黎明")
+
+            VStack(spacing: 5) {
+                twilightRow("民用", icon: "person.fill", astro.civilDawn, astro.civilDusk)
+                twilightRow("航海", icon: "sailboat.fill", astro.nauticalDawn, astro.nauticalDusk)
+                twilightRow("天文", icon: "globe.asia.australia.fill", astro.astronomicalDawn, astro.astronomicalDusk)
+            }
         }
-        .foregroundStyle(Theme.textPrimary)
+        .card()
+        .hoverHighlight()
     }
 
-    private func magicRow(_ label: String, _ date: Date?, _ tint: Color) -> some View {
-        HStack(spacing: 4) {
-            Circle()
-                .fill(tint)
-                .frame(width: 7, height: 7)
+    private func twilightRow(_ label: String, icon: String, _ dawn: Date?, _ dusk: Date?) -> some View {
+        HStack(spacing: 5) {
+            Image(systemName: icon)
+                .font(.system(size: 9.5))
+                .foregroundStyle(Theme.textTertiary)
+                .frame(width: 12)
             Text(label)
                 .font(.system(size: 11.5))
                 .foregroundStyle(Theme.textSecondary)
-            Spacer()
+            Spacer(minLength: 6)
+            HStack(spacing: 6) {
+                Text(Formatters.clockLabel(dawn))
+                Text(Formatters.clockLabel(dusk))
+            }
+            .font(.system(size: 11.5, weight: .medium))
+            .monospacedDigit()
+            .foregroundStyle(Theme.textPrimary)
+        }
+    }
+}
+
+// MARK: - 魔法时光
+
+struct MagicHourPanel: View {
+    let astro: AstroInfo
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 7) {
+            PanelTitle("魔法时光")
+
+            VStack(spacing: 5) {
+                magicRow("蓝色时光", icon: "clock.fill", astro.blueHourMorning, Theme.accentBlue)
+                magicRow("黄金时光", icon: "clock.fill", astro.goldenHourMorning, Theme.accentSun)
+                magicRow("黄金时光", icon: "clock.fill", astro.goldenHourEvening, Theme.accentSun)
+                magicRow("蓝色时光", icon: "clock.fill", astro.blueHourEvening, Theme.accentBlue)
+            }
+        }
+        .card()
+        .hoverHighlight()
+    }
+
+    private func magicRow(_ label: String, icon: String, _ date: Date?, _ tint: Color) -> some View {
+        HStack(spacing: 5) {
+            Image(systemName: icon)
+                .font(.system(size: 9.5))
+                .foregroundStyle(tint)
+                .frame(width: 12)
+            Text(label)
+                .font(.system(size: 11.5))
+                .foregroundStyle(Theme.textSecondary)
+            Spacer(minLength: 6)
             Text(Formatters.clockLabel(date))
                 .font(.system(size: 11.5, weight: .medium))
                 .monospacedDigit()
@@ -329,97 +355,208 @@ struct SunMoonPanel: View {
     }
 }
 
+/// 卡片蓝色小标题
+struct PanelTitle: View {
+    let text: String
+
+    init(_ text: String) { self.text = text }
+
+    var body: some View {
+        Text(text)
+            .font(.system(size: 12, weight: .semibold))
+            .foregroundStyle(Theme.accentBlue)
+    }
+}
+
 // MARK: - 曲线
+
+/// 曲线可切换的指标
+enum TrendMetric: String, CaseIterable, Identifiable {
+    case wind, humidity, pressure, dewPoint, uv, apparent, precipitation, cloud
+
+    var id: String { rawValue }
+
+    var label: String {
+        switch self {
+        case .wind: return "风速"
+        case .humidity: return "湿度"
+        case .pressure: return "气压"
+        case .dewPoint: return "露点温度"
+        case .uv: return "紫外线指数"
+        case .apparent: return "体感温度"
+        case .precipitation: return "降水"
+        case .cloud: return "云量"
+        }
+    }
+
+    var domain: ClosedRange<Double>? {
+        switch self {
+        case .humidity, .cloud: return 0...100
+        default: return nil
+        }
+    }
+
+    var isFilled: Bool {
+        switch self {
+        case .humidity, .cloud, .precipitation: return true
+        default: return false
+        }
+    }
+
+    func value(_ hour: HourPoint) -> Double? {
+        switch self {
+        case .wind: return hour.windSpeed
+        case .humidity: return Double(hour.humidity)
+        case .pressure: return hour.pressureHPa
+        case .dewPoint: return hour.dewPoint
+        case .uv: return hour.uvIndex
+        case .apparent: return hour.apparentTemperature
+        case .precipitation: return hour.precipitation
+        case .cloud: return hour.cloudCover.map(Double.init)
+        }
+    }
+
+    func formatted(_ value: Double,
+                   temperatureUnit: TemperatureUnit,
+                   windUnit: WindUnit,
+                   pressureUnit: PressureUnit) -> String {
+        switch self {
+        case .wind:
+            return "\(Formatters.windShort(value, unit: windUnit)) \(windUnit.shortLabel)"
+        case .humidity, .cloud:
+            return "\(Int(value.rounded()))%"
+        case .pressure:
+            return Formatters.pressure(value, unit: pressureUnit)
+        case .dewPoint, .apparent:
+            return Formatters.temperature(value, unit: temperatureUnit)
+        case .uv:
+            return "\(Int(value.rounded()))"
+        case .precipitation:
+            return String(format: "%.1f 毫米", value)
+        }
+    }
+}
 
 struct TrendChartsView: View {
     @EnvironmentObject private var prefs: PreferencesStore
     let hours: [HourPoint]
 
+    @State private var primary: TrendMetric = .wind
+    @State private var secondary: TrendMetric = .humidity
+
     var body: some View {
         VStack(spacing: 10) {
-            windChart
-            humidityChart
+            chart(selection: $primary)
+            chart(selection: $secondary)
         }
     }
 
-    private var windChart: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            HStack {
-                Text(windHeadline)
+    private struct TrendPoint: Identifiable {
+        let id: Date
+        let value: Double
+    }
+
+    private func points(for metric: TrendMetric) -> [TrendPoint] {
+        hours.compactMap { hour in
+            guard let value = metric.value(hour) else { return nil }
+            return TrendPoint(id: hour.date, value: value)
+        }
+    }
+
+    private func chart(selection: Binding<TrendMetric>) -> some View {
+        let metric = selection.wrappedValue
+        let data = points(for: metric)
+
+        return VStack(alignment: .leading, spacing: 4) {
+            HStack(spacing: 5) {
+                Text(headline(metric, data: data))
                     .font(.system(size: 12.5, weight: .medium))
                     .foregroundStyle(Theme.textPrimary)
-                Spacer()
-                Text("风速")
+                Spacer(minLength: 6)
+                Text(metric.label)
                     .font(.system(size: 11.5))
                     .foregroundStyle(Theme.textTertiary)
+                Image(systemName: "chevron.down")
+                    .font(.system(size: 8, weight: .semibold))
+                    .foregroundStyle(Theme.textTertiary)
             }
-            Chart(hours) { hour in
-                LineMark(
-                    x: .value("时间", hour.date),
-                    y: .value("风速", hour.windSpeed)
-                )
-                .interpolationMethod(.catmullRom)
-                .foregroundStyle(Theme.chartLine)
-                .lineStyle(StrokeStyle(lineWidth: 1.2))
-                PointMark(
-                    x: .value("时间", hour.date),
-                    y: .value("风速", hour.windSpeed)
-                )
-                .symbol(.diamond)
-                .symbolSize(12)
-                .foregroundStyle(Theme.chartLine)
+
+            if data.isEmpty {
+                Text("暂无数据")
+                    .font(.system(size: 11.5))
+                    .foregroundStyle(Theme.textTertiary)
+                    .frame(maxWidth: .infinity, minHeight: 80)
+            } else if let domain = metric.domain {
+                plot(metric, data: data)
+                    .chartYScale(domain: domain)
+            } else {
+                plot(metric, data: data)
             }
-            .chartXAxis(.hidden)
-            .chartYAxis(.hidden)
-            .frame(height: 80)
         }
         .card()
+        .hoverHighlight()
+        .contextMenu {
+            ForEach(TrendMetric.allCases) { item in
+                Button {
+                    selection.wrappedValue = item
+                } label: {
+                    if item == metric {
+                        Label(item.label, systemImage: "checkmark")
+                    } else {
+                        Text(item.label)
+                    }
+                }
+            }
+        }
     }
 
-    private var humidityChart: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            HStack {
-                Text("\(hours.first?.humidity ?? 0)%")
-                    .font(.system(size: 12.5, weight: .medium))
-                    .foregroundStyle(Theme.textPrimary)
-                Spacer()
-                Text("湿度")
-                    .font(.system(size: 11.5))
-                    .foregroundStyle(Theme.textTertiary)
-            }
-            Chart(hours) { hour in
+    private func plot(_ metric: TrendMetric, data: [TrendPoint]) -> some View {
+        Chart(data) { point in
+            if metric.isFilled {
                 AreaMark(
-                    x: .value("时间", hour.date),
-                    y: .value("湿度", hour.humidity)
+                    x: .value("时间", point.id),
+                    y: .value(metric.label, point.value)
                 )
                 .interpolationMethod(.catmullRom)
                 .foregroundStyle(
                     LinearGradient(colors: [Theme.chartFillTop, Theme.chartFillBottom],
                                    startPoint: .top, endPoint: .bottom)
                 )
-                LineMark(
-                    x: .value("时间", hour.date),
-                    y: .value("湿度", hour.humidity)
-                )
-                .interpolationMethod(.catmullRom)
-                .foregroundStyle(Theme.chartLine)
-                .lineStyle(StrokeStyle(lineWidth: 1))
             }
-            .chartXAxis(.hidden)
-            .chartYAxis(.hidden)
-            .chartYScale(domain: 0...100)
-            .frame(height: 80)
 
-            Text("\(hours.last?.humidity ?? 0)%")
-                .font(.system(size: 11.5))
-                .foregroundStyle(Theme.textTertiary)
+            LineMark(
+                x: .value("时间", point.id),
+                y: .value(metric.label, point.value)
+            )
+            .interpolationMethod(.catmullRom)
+            .foregroundStyle(Theme.chartLine)
+            .lineStyle(StrokeStyle(lineWidth: metric == .wind ? 1.2 : 1))
+
+            if metric == .wind {
+                PointMark(
+                    x: .value("时间", point.id),
+                    y: .value(metric.label, point.value)
+                )
+                .symbol(.diamond)
+                .symbolSize(12)
+                .foregroundStyle(Theme.chartLine)
+            }
         }
-        .card()
+        .chartXAxis(.hidden)
+        .chartYAxis(.hidden)
+        .frame(height: 80)
     }
 
-    private var windHeadline: String {
-        guard let first = hours.first, let last = hours.last else { return "—" }
-        let unit = prefs.windUnit
-        return "\(Formatters.windShort(first.windSpeed, unit: unit)) → \(Formatters.windShort(last.windSpeed, unit: unit)) \(unit.shortLabel)"
+    private func headline(_ metric: TrendMetric, data: [TrendPoint]) -> String {
+        guard let first = data.first, let last = data.last else { return "—" }
+        let head = metric.formatted(first.value,
+                                    temperatureUnit: prefs.temperatureUnit,
+                                    windUnit: prefs.windUnit,
+                                    pressureUnit: prefs.pressureUnit)
+        let tail = metric.formatted(last.value,
+                                    temperatureUnit: prefs.temperatureUnit,
+                                    windUnit: prefs.windUnit,
+                                    pressureUnit: prefs.pressureUnit)
+        return "\(head) → \(tail)"
     }
 }
