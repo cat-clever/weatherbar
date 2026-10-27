@@ -89,7 +89,7 @@ enum ProviderError: LocalizedError {
         case .notConfigured(let name): return "\(name) 未配置 API Key"
         case .unsupported(let feature): return "当前数据源不支持 \(feature)"
         case .http(let code): return "服务器返回 HTTP \(code)"
-        case .decoding(let detail): return "数据解析失败：\(detail)"
+        case .decoding: return "数据解析失败，请重试或更换数据源"
         case .network(let detail): return "网络错误：\(detail)"
         case .quota(let name): return "\(name) 额度已用尽"
         }

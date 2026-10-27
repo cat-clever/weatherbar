@@ -32,6 +32,7 @@ final class WeatherStore: ObservableObject {
     private let astro = AstroCalculator()
     private var refreshTask: Task<Void, Never>?
     private var retryDelay: TimeInterval = 30
+    private var lastLocationFix: Date?
 
     init(prefs: PreferencesStore, places: PlaceStore) {
         self.prefs = prefs
@@ -138,12 +139,18 @@ final class WeatherStore: ObservableObject {
     private func resolvePlace() async -> Place? {
         if let active = places.active, active.isCurrentLocation {
             usingCurrentLocation = true
+
+            // 定位节流：2 小时内不重复请求，失败也标记，避免每次刷新都等超时
+            if let last = lastLocationFix, Date().timeIntervalSince(last) < 7200 {
+                return active
+            }
             do {
                 let located = try await locator.requestPlace()
+                lastLocationFix = Date()
                 places.updateCurrentLocation(located)
-                return located
+                return places.active ?? located
             } catch {
-                // 定位失败，退回上次坐标
+                lastLocationFix = Date()
                 return active
             }
         }

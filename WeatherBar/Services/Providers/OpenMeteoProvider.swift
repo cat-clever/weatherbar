@@ -38,12 +38,13 @@ final class OpenMeteoProvider: WeatherProvider {
         guard let http = response as? HTTPURLResponse else { throw ProviderError.network("无响应") }
         guard (200..<300).contains(http.statusCode) else { throw ProviderError.http(http.statusCode) }
 
-        let decoder = JSONDecoder()
-        decoder.keyDecodingStrategy = .convertFromSnakeCase
         let raw: Response
         do {
-            raw = try decoder.decode(Response.self, from: data)
+            // 注意：不能使用 .convertFromSnakeCase —— 它会把 temperature_2m 转成 temperature2M，
+            // 与属性名不匹配。这里全部使用显式 CodingKeys。
+            raw = try JSONDecoder().decode(Response.self, from: data)
         } catch {
+            NSLog("WeatherBar OpenMeteo decode error: \(error)")
             throw ProviderError.decoding(String(describing: error))
         }
         return Self.makePayload(raw, place: place, hours: hours)
@@ -65,7 +66,23 @@ final class OpenMeteoProvider: WeatherProvider {
             let windSpeed10m: Double?
             let windDirection10m: Double?
             let windGusts10m: Double?
+
+            enum CodingKeys: String, CodingKey {
+                case time
+                case temperature2m = "temperature_2m"
+                case relativeHumidity2m = "relative_humidity_2m"
+                case apparentTemperature = "apparent_temperature"
+                case isDay = "is_day"
+                case precipitation
+                case weatherCode = "weather_code"
+                case cloudCover = "cloud_cover"
+                case pressureMsl = "pressure_msl"
+                case windSpeed10m = "wind_speed_10m"
+                case windDirection10m = "wind_direction_10m"
+                case windGusts10m = "wind_gusts_10m"
+            }
         }
+
         struct Hourly: Decodable {
             let time: [String]
             let temperature2m: [Double?]
@@ -76,7 +93,20 @@ final class OpenMeteoProvider: WeatherProvider {
             let uvIndex: [Double?]
             let windSpeed10m: [Double?]
             let relativeHumidity2m: [Int?]
+
+            enum CodingKeys: String, CodingKey {
+                case time
+                case temperature2m = "temperature_2m"
+                case weatherCode = "weather_code"
+                case precipitationProbability = "precipitation_probability"
+                case dewPoint2m = "dew_point_2m"
+                case visibility
+                case uvIndex = "uv_index"
+                case windSpeed10m = "wind_speed_10m"
+                case relativeHumidity2m = "relative_humidity_2m"
+            }
         }
+
         struct Daily: Decodable {
             let time: [String]
             let weatherCode: [Int?]
@@ -89,7 +119,22 @@ final class OpenMeteoProvider: WeatherProvider {
             let precipitationProbabilityMax: [Int?]
             let windSpeed10mMax: [Double?]
             let windGusts10mMax: [Double?]
+
+            enum CodingKeys: String, CodingKey {
+                case time
+                case weatherCode = "weather_code"
+                case temperature2mMax = "temperature_2m_max"
+                case temperature2mMin = "temperature_2m_min"
+                case sunrise
+                case sunset
+                case daylightDuration = "daylight_duration"
+                case uvIndexMax = "uv_index_max"
+                case precipitationProbabilityMax = "precipitation_probability_max"
+                case windSpeed10mMax = "wind_speed_10m_max"
+                case windGusts10mMax = "wind_gusts_10m_max"
+            }
         }
+
         let timezone: String
         let current: Current
         let hourly: Hourly
@@ -115,15 +160,18 @@ final class OpenMeteoProvider: WeatherProvider {
         }
 
         var hourPoints: [HourPoint] = []
-        for i in startIndex..<min(startIndex + max(hours, 12), hourlyDates.count) {
-            hourPoints.append(HourPoint(
-                date: hourlyDates[i],
-                temperature: at(raw.hourly.temperature2m, i) ?? 0,
-                code: WeatherCode(raw: at(raw.hourly.weatherCode, i) ?? 2),
-                precipitationChance: at(raw.hourly.precipitationProbability, i) ?? 0,
-                windSpeed: at(raw.hourly.windSpeed10m, i) ?? 0,
-                humidity: at(raw.hourly.relativeHumidity2m, i) ?? 0
-            ))
+        if startIndex < hourlyDates.count {
+            let upper = min(startIndex + max(hours, 12), hourlyDates.count)
+            for i in startIndex..<upper {
+                hourPoints.append(HourPoint(
+                    date: hourlyDates[i],
+                    temperature: at(raw.hourly.temperature2m, i) ?? 0,
+                    code: WeatherCode(raw: at(raw.hourly.weatherCode, i) ?? 2),
+                    precipitationChance: at(raw.hourly.precipitationProbability, i) ?? 0,
+                    windSpeed: at(raw.hourly.windSpeed10m, i) ?? 0,
+                    humidity: at(raw.hourly.relativeHumidity2m, i) ?? 0
+                ))
+            }
         }
 
         var dayPoints: [DayPoint] = []

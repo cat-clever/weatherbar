@@ -37,9 +37,9 @@ final class LocationService: NSObject, ObservableObject {
         return try await withCheckedThrowingContinuation { continuation in
             self.continuation = continuation
             manager.requestLocation()
-            // 15 秒兜底超时
+            // 6 秒兜底超时
             Task { @MainActor in
-                try? await Task.sleep(nanoseconds: 15_000_000_000)
+                try? await Task.sleep(nanoseconds: 6_000_000_000)
                 if let pending = self.continuation {
                     self.continuation = nil
                     pending.resume(throwing: LocationError.timeout)
