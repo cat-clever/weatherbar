@@ -90,9 +90,16 @@ jobs:
           cp -R "$APP" dist/
           codesign --force --deep --sign - "dist/WeatherBar.app"
           (cd dist && ditto -c -k --keepParent WeatherBar.app "WeatherBar-${VERSION}.zip")
+
+          # dmg：App + Applications 快捷方式（拖拽即安装）
+          STAGING=$(mktemp -d)
+          cp -R "dist/WeatherBar.app" "$STAGING/WeatherBar.app"
+          ln -s /Applications "$STAGING/Applications"
           hdiutil create -volname "WeatherBar ${VERSION}" \
-            -srcfolder dist/WeatherBar.app -ov -format UDZO \
+            -srcfolder "$STAGING" -ov -format UDZO \
             "dist/WeatherBar-${VERSION}.dmg"
+          rm -rf "$STAGING"
+
           (cd dist && shasum -a 256 WeatherBar-* > SHA256SUMS.txt)
           ls -lh dist
 

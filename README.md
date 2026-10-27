@@ -35,7 +35,7 @@
 
 ## 安装
 
-从 [Releases](https://github.com/cat-clever/weatherbar/releases) 下载 `.dmg`，拖入「应用程序」。
+从 [Releases](https://github.com/cat-clever/weatherbar/releases) 下载 `.dmg`，双击挂载后，把 **WeatherBar** 拖到同一窗口里的 **Applications** 文件夹上即可完成安装。
 
 未签名版本首次打开需：
 

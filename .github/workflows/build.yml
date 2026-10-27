@@ -120,8 +120,15 @@ jobs:
           OUT=dist; mkdir -p "$OUT"
           cp -R "$APP" "$OUT/"
           (cd "$OUT" && ditto -c -k --keepParent WeatherBar.app "WeatherBar-${VERSION}.zip")
+
+          # dmg：App + Applications 快捷方式（拖拽即安装）
+          STAGING=$(mktemp -d)
+          cp -R "$APP" "$STAGING/WeatherBar.app"
+          ln -s /Applications "$STAGING/Applications"
           hdiutil create -volname "WeatherBar ${VERSION}" \
-            -srcfolder "$APP" -ov -format UDZO "$OUT/WeatherBar-${VERSION}.dmg"
+            -srcfolder "$STAGING" -ov -format UDZO "$OUT/WeatherBar-${VERSION}.dmg"
+          rm -rf "$STAGING"
+
           (cd "$OUT" && shasum -a 256 WeatherBar-* > SHA256SUMS.txt)
           ls -lh "$OUT"
           echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
