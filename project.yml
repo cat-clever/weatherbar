@@ -1,0 +1,86 @@
+name: WeatherBar
+
+options:
+  bundleIdPrefix: com.catclever
+  deploymentTarget:
+    macOS: "13.0"
+  createIntermediateGroups: true
+  groupSortPosition: top
+  generateEmptyDirectories: true
+
+settings:
+  base:
+    SWIFT_VERSION: "5.0"
+    SWIFT_STRICT_CONCURRENCY: minimal
+    MARKETING_VERSION: "0.1.0"
+    CURRENT_PROJECT_VERSION: "1"
+    ENABLE_HARDENED_RUNTIME: YES
+    DEAD_CODE_STRIPPING: YES
+    ALWAYS_SEARCH_USER_PATHS: NO
+    CLANG_ENABLE_MODULES: YES
+    GCC_OPTIMIZATION_LEVEL: s
+  configs:
+    # Universal 2：同时产出 arm64 + x86_64
+    Release:
+      ARCHS: "arm64 x86_64"
+      ONLY_ACTIVE_ARCH: NO
+      VALID_ARCHS: "arm64 x86_64"
+    Debug:
+      ONLY_ACTIVE_ARCH: YES
+
+targets:
+  WeatherBar:
+    type: application
+    platform: macOS
+    sources:
+      - path: WeatherBar
+        excludes:
+          - "Info.plist"
+          - "WeatherBar.entitlements"
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.catclever.weatherbar
+        PRODUCT_NAME: WeatherBar
+        INFOPLIST_FILE: WeatherBar/Info.plist
+        CODE_SIGN_ENTITLEMENTS: WeatherBar/WeatherBar.entitlements
+        CODE_SIGN_STYLE: Automatic
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME: AccentColor
+        COMBINE_HIDPI_IMAGES: YES
+        ENABLE_PREVIEWS: YES
+        MACOSX_DEPLOYMENT_TARGET: "13.0"
+    info:
+      path: WeatherBar/Info.plist
+      properties:
+        CFBundleName: WeatherBar
+        CFBundleDisplayName: 状态栏天气
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        CFBundlePackageType: APPL
+        CFBundleExecutable: $(EXECUTABLE_NAME)
+        LSMinimumSystemVersion: $(MACOSX_DEPLOYMENT_TARGET)
+        LSUIElement: true
+        LSApplicationCategoryType: public.app-category.weather
+        NSHighResolutionCapable: true
+        NSLocationUsageDescription: 用于获取当前位置的天气。
+        NSLocationWhenInUseUsageDescription: 用于获取当前位置的天气。
+        NSSupportsAutomaticTermination: false
+        NSSupportsSuddenTermination: false
+        ITSAppUsesNonExemptEncryption: false
+        NSHumanReadableCopyright: ""
+    entitlements:
+      path: WeatherBar/WeatherBar.entitlements
+      properties:
+        com.apple.security.app-sandbox: true
+        com.apple.security.network.client: true
+        com.apple.security.personal-information.location: true
+
+schemes:
+  WeatherBar:
+    build:
+      targets:
+        WeatherBar: all
+    run:
+      config: Debug
+    archive:
+      config: Release

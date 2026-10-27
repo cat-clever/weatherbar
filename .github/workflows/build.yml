@@ -1,0 +1,149 @@
+name: build
+
+on:
+  push:
+    branches: [main]
+    paths-ignore:
+      - 'docs/**'
+      - '**.md'
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: build-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  SCHEME: WeatherBar
+  CONFIG: Release
+
+jobs:
+  build:
+    name: Build (universal, unsigned)
+    runs-on: macos-15
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Toolchain info
+        run: |
+          xcodebuild -version
+          swift --version
+          sw_vers
+          echo "runner=$RUNNER_OS $RUNNER_ARCH"
+
+      - name: Cache Homebrew downloads
+        uses: actions/cache@v4
+        with:
+          path: ~/Library/Caches/Homebrew
+          key: brew-${{ runner.os }}-xcodegen-${{ hashFiles('project.yml') }}
+          restore-keys: brew-${{ runner.os }}-
+
+      - name: Install build tools
+        run: brew install xcodegen xcbeautify
+
+      - name: Generate Xcode project
+        run: |
+          xcodegen --version
+          xcodegen generate --spec project.yml
+          ls -la WeatherBar.xcodeproj
+
+      - name: Inject provider keys (optional)
+        env:
+          QWEATHER_KEY: ${{ secrets.QWEATHER_KEY }}
+          QWEATHER_HOST: ${{ secrets.QWEATHER_HOST }}
+        run: |
+          set -euo pipefail
+          PLIST="WeatherBar/Info.plist"
+          [ -f "$PLIST" ] || { echo "::warning::Info.plist not found, skip key injection"; exit 0; }
+          if [ -n "${QWEATHER_KEY:-}" ]; then
+            /usr/libexec/PlistBuddy -c "Add :WBQWeatherKey string ${QWEATHER_KEY}" "$PLIST" 2>/dev/null || \
+              /usr/libexec/PlistBuddy -c "Set :WBQWeatherKey ${QWEATHER_KEY}" "$PLIST"
+            if [ -n "${QWEATHER_HOST:-}" ]; then
+              /usr/libexec/PlistBuddy -c "Add :WBQWeatherHost string ${QWEATHER_HOST}" "$PLIST" 2>/dev/null || \
+                /usr/libexec/PlistBuddy -c "Set :WBQWeatherHost ${QWEATHER_HOST}" "$PLIST"
+            fi
+            echo "injected QWeather key"
+          else
+            echo "no provider secrets configured (Open-Meteo default still works)"
+          fi
+
+      - name: Build
+        run: |
+          set -o pipefail
+          xcodebuild \
+            -project WeatherBar.xcodeproj \
+            -scheme "$SCHEME" \
+            -configuration "$CONFIG" \
+            -derivedDataPath build \
+            -destination 'generic/platform=macOS' \
+            ARCHS="arm64 x86_64" \
+            ONLY_ACTIVE_ARCH=NO \
+            CODE_SIGN_IDENTITY="-" \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGNING_ALLOWED=NO \
+            build 2>&1 | xcbeautify --renderer github-actions
+
+      - name: Verify universal binary
+        run: |
+          set -euo pipefail
+          APP="build/Build/Products/$CONFIG/WeatherBar.app"
+          BIN="$APP/Contents/MacOS/WeatherBar"
+          test -d "$APP"
+          lipo -info "$BIN"
+          for arch in arm64 x86_64; do
+            if ! lipo -info "$BIN" | grep -q "$arch"; then
+              echo "::error::missing $arch slice in $BIN"
+              exit 1
+            fi
+          done
+          /usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$APP/Contents/Info.plist"
+          /usr/libexec/PlistBuddy -c 'Print :LSUIElement' "$APP/Contents/Info.plist"
+          /usr/libexec/PlistBuddy -c 'Print :LSMinimumSystemVersion' "$APP/Contents/Info.plist"
+
+      - name: Ad-hoc sign
+        run: |
+          set -euo pipefail
+          APP="build/Build/Products/$CONFIG/WeatherBar.app"
+          codesign --force --deep --sign - "$APP"
+          codesign --verify --verbose=2 "$APP"
+
+      - name: Package (zip + dmg + sha256)
+        id: package
+        run: |
+          set -euo pipefail
+          APP="build/Build/Products/$CONFIG/WeatherBar.app"
+          VERSION=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$APP/Contents/Info.plist")
+          BUILD=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' "$APP/Contents/Info.plist")
+          OUT=dist; mkdir -p "$OUT"
+          cp -R "$APP" "$OUT/"
+          (cd "$OUT" && ditto -c -k --keepParent WeatherBar.app "WeatherBar-${VERSION}.zip")
+          hdiutil create -volname "WeatherBar ${VERSION}" \
+            -srcfolder "$APP" -ov -format UDZO "$OUT/WeatherBar-${VERSION}.dmg"
+          (cd "$OUT" && shasum -a 256 WeatherBar-* > SHA256SUMS.txt)
+          ls -lh "$OUT"
+          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
+          echo "build=${BUILD}" >> "$GITHUB_OUTPUT"
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: WeatherBar-${{ steps.package.outputs.version }}-${{ github.sha }}
+          path: dist/*
+          retention-days: 14
+          if-no-files-found: error
+
+      - name: Summary
+        run: |
+          {
+            echo "### 构建成功 ✅"
+            echo ""
+            echo "| 项 | 值 |"
+            echo "|---|---|"
+            echo "| 版本 | ${{ steps.package.outputs.version }} (${{ steps.package.outputs.build }}) |"
+            echo "| 提交 | \`${{ github.sha }}\` |"
+            echo "| Runner | \`macos-15\` / universal (arm64 + x86_64) |"
+            echo "| 产物 | \`WeatherBar.app\`, \`.dmg\`, \`.zip\`, \`SHA256SUMS.txt\` |"
+          } >> "$GITHUB_STEP_SUMMARY"

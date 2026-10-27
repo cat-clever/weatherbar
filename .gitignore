@@ -1,0 +1,28 @@
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# 构建产物
+build/
+dist/
+DerivedData/
+*.xcresult
+*.xcarchive
+
+# XcodeGen 生成物（以 project.yml 为准）
+*.xcodeproj
+*.xcworkspace
+!*.xcworkspace/contents.xcworkspacedata
+
+# Swift Package Manager
+.swiftpm/
+.build/
+Package.resolved
+
+# 编辑器 / 本地
+xcuserdata/
+*.xcuserstate
+.idea/
+.vscode/
+*.swp
