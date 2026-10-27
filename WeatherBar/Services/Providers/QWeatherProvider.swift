@@ -80,9 +80,9 @@ final class QWeatherProvider: WeatherProvider {
                 minTemperature: Double(d.tempMin) ?? 0,
                 maxTemperature: Double(d.tempMax) ?? 0,
                 precipitationChance: 0,
-                uvIndexMax: Double(d.uvIndex) ?? 0,
-                windMax: Double(d.windSpeedDay) ?? 0,
-                gustMax: Double(d.windGustDay) ?? 0
+                uvIndexMax: Double(d.uvIndex ?? "") ?? 0,
+                windMax: Double(d.windSpeedDay ?? "") ?? 0,
+                gustMax: Double(d.windGustDay ?? "") ?? 0
             )
         }
 
