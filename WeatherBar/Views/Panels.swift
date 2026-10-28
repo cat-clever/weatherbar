@@ -158,10 +158,6 @@ struct HourlyStripView: View {
         }
         .frame(height: 84)
         .card()
-        .onHover { hovering in
-            // 悬停逐小时横条时不弹左侧浮窗
-            if hovering { router.collapseNow() }
-        }
     }
 
     private func isDay(_ date: Date) -> Bool {

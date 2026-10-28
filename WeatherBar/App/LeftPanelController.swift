@@ -9,7 +9,7 @@ final class LeftPanelController {
 
     var isVisible: Bool { panel?.isVisible ?? false }
 
-    func show<Content: View>(beside parent: NSWindow, anchorTop: CGFloat, content: Content) {
+    func show<Content: View>(beside parent: NSWindow, anchorRect: NSRect, anchorTop: CGFloat, content: Content) {
         let size = NSSize(width: Theme.leftPanelWidth, height: Theme.panelHeight)
 
         if panel == nil {
@@ -38,17 +38,8 @@ final class LeftPanelController {
         hosting.layoutSubtreeIfNeeded()
         Self.hideScrollers(in: hosting)
 
-        let parentFrame = parent.frame
-        var origin = NSPoint(
-            x: parentFrame.minX - size.width - Theme.leftPanelGap,
-            y: parentFrame.maxY - anchorTop - size.height
-        )
-
-        // 避免浮窗跑出屏幕
-        if let visible = (parent.screen ?? NSScreen.main)?.visibleFrame {
-            origin.x = max(visible.minX + 4, origin.x)
-            origin.y = max(visible.minY + 4, min(origin.y, visible.maxY - size.height))
-        }
+        let origin = Self.origin(beside: anchorRect, anchorTop: anchorTop, size: size,
+                                 screen: parent.screen ?? NSScreen.main)
 
         panel.setFrame(NSRect(origin: origin, size: size), display: true)
         panel.alphaValue = 0
@@ -66,20 +57,27 @@ final class LeftPanelController {
     }
 
     /// 悬停不同横条时只挪位置，不重建内容
-    func reposition(beside parent: NSWindow, anchorTop: CGFloat) {
+    func reposition(beside parent: NSWindow, anchorRect: NSRect, anchorTop: CGFloat) {
         guard let panel, panel.isVisible else { return }
-        let size = panel.frame.size
-        var origin = NSPoint(
-            x: parent.frame.minX - size.width - Theme.leftPanelGap,
-            y: parent.frame.maxY - anchorTop - size.height
-        )
-        if let visible = (parent.screen ?? NSScreen.main)?.visibleFrame {
-            origin.x = max(visible.minX + 4, origin.x)
-            origin.y = max(visible.minY + 4, min(origin.y, visible.maxY - size.height))
-        }
+        let origin = Self.origin(beside: anchorRect, anchorTop: anchorTop, size: panel.frame.size,
+                                 screen: parent.screen ?? NSScreen.main)
         if panel.frame.origin != origin {
             panel.setFrameOrigin(origin)
         }
+    }
+
+    /// 浮窗贴在主面板可见区域的左边缘（用内容视图的真实矩形，避免被 popover 窗口的透明边距撑开）
+    private static func origin(beside anchorRect: NSRect, anchorTop: CGFloat, size: NSSize,
+                               screen: NSScreen?) -> NSPoint {
+        var origin = NSPoint(
+            x: anchorRect.minX - size.width - Theme.leftPanelGap,
+            y: anchorRect.maxY - anchorTop - size.height
+        )
+        if let visible = screen?.visibleFrame {
+            origin.x = max(visible.minX + 4, origin.x)
+            origin.y = max(visible.minY + 4, min(origin.y, visible.maxY - size.height))
+        }
+        return origin
     }
 
     func hide() {

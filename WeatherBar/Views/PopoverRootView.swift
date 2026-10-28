@@ -28,10 +28,10 @@ struct PopoverRootView: View {
                 .strokeBorder(Theme.cardStroke, lineWidth: 1)
         )
         .onHover { hovering in
+            // 进入面板即展开左浮窗；收起只跟随 popover 关闭，
+            // 避免鼠标划过逐小时横条（NSViewRepresentable）时被误判为离开而闪退
             if hovering {
                 router.expand()
-            } else {
-                router.scheduleCollapse()
             }
         }
         .preferredColorScheme(.dark)
@@ -47,7 +47,7 @@ struct PopoverRootView: View {
                         RegionSwitcherView()
                     }
 
-                    HourlyStripView(hours: snapshot.hourly, now: Date())
+                    HourlyStripView(hours: upcomingHours(snapshot), now: Date())
 
                     DailyListView(days: snapshot.daily)
 
@@ -93,8 +93,14 @@ struct PopoverRootView: View {
         .padding(.vertical, 60)
     }
 
-    private func footer(_ snapshot: WeatherSnapshot) -> some View {
-        VStack(spacing: 4) {
+    /// 主面板的逐小时只看从现在往后的部分（浮窗里才需要整天数据）
+    private func upcomingHours(_ snapshot: WeatherSnapshot) -> [HourPoint] {
+        let now = Date()
+        let upcoming = snapshot.hourly.filter { $0.date >= now }
+        return upcoming.isEmpty ? snapshot.hourly : upcoming
+    }
+
+    private func footer(_ snapshot: WeatherSnapshot) -> some View {        VStack(spacing: 4) {
             Button {
                 Task { await store.refresh(force: true) }
             } label: {

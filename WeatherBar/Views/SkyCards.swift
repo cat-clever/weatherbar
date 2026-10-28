@@ -32,7 +32,7 @@ struct SkyPathCard: View {
                 labels
             }
         }
-        .frame(height: 172)
+        .frame(height: 150)
         .clipShape(RoundedRectangle(cornerRadius: Theme.cardRadius, style: .continuous))
         .hoverHighlight()
     }

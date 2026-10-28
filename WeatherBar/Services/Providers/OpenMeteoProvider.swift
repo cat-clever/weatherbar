@@ -155,9 +155,17 @@ final class OpenMeteoProvider: WeatherProvider {
         let hourlyDates = raw.hourly.time.compactMap { WallClock.date(from: $0) }
         let nowDate = WallClock.date(from: raw.current.time) ?? Date()
 
-        // 找到当前小时在 hourly 中的索引
-        var startIndex = 0
+        // 当前小时在 hourly 中的索引（取实况的露点/能见度/紫外线用）
+        var nowIndex = 0
         for (i, d) in hourlyDates.enumerated() where d >= nowDate {
+            nowIndex = i
+            break
+        }
+
+        // 逐小时列表从「今天 0 点」开始保留 7 天，这样浮窗里今天也是完整一天
+        let todayStart = WallClock.startOfDay(nowDate)
+        var startIndex = 0
+        for (i, d) in hourlyDates.enumerated() where d >= todayStart {
             startIndex = i
             break
         }
@@ -210,9 +218,9 @@ final class OpenMeteoProvider: WeatherProvider {
             apparentTemperature: raw.current.apparentTemperature ?? raw.current.temperature2m ?? 0,
             humidity: raw.current.relativeHumidity2m ?? 0,
             pressureHPa: raw.current.pressureMsl ?? 1013,
-            dewPoint: at(raw.hourly.dewPoint2m, startIndex) ?? 0,
-            visibilityMeters: at(raw.hourly.visibility, startIndex) ?? 10_000,
-            uvIndex: at(raw.hourly.uvIndex, startIndex) ?? 0,
+            dewPoint: at(raw.hourly.dewPoint2m, nowIndex) ?? 0,
+            visibilityMeters: at(raw.hourly.visibility, nowIndex) ?? 10_000,
+            uvIndex: at(raw.hourly.uvIndex, nowIndex) ?? 0,
             windSpeed: raw.current.windSpeed10m ?? 0,
             windDirection: raw.current.windDirection10m ?? 0,
             windGust: raw.current.windGusts10m ?? 0,

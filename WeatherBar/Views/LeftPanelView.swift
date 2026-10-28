@@ -26,10 +26,9 @@ struct LeftPanelView: View {
         )
         .preferredColorScheme(.dark)
         .onHover { hovering in
+            // 鼠标进入浮窗时保持展开；收起由 popover 关闭统一处理
             if hovering {
                 router.expand()
-            } else {
-                router.scheduleCollapse()
             }
         }
     }

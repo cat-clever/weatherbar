@@ -147,18 +147,20 @@ final class StatusItemController: NSObject {
     private func updateLeftPanel(expanded: Bool) {
         guard expanded,
               popover.isShown,
-              let parent = popover.contentViewController?.view.window else {
+              let parent = popover.contentViewController?.view.window,
+              let anchorRect = mainPanelScreenRect(in: parent) else {
             leftPanel.hide()
             return
         }
 
         if leftPanel.isVisible {
-            leftPanel.reposition(beside: parent, anchorTop: router.anchorTop)
+            leftPanel.reposition(beside: parent, anchorRect: anchorRect, anchorTop: router.anchorTop)
             return
         }
 
         leftPanel.show(
             beside: parent,
+            anchorRect: anchorRect,
             anchorTop: router.anchorTop,
             content: LeftPanelView()
                 .environmentObject(store)
@@ -166,6 +168,13 @@ final class StatusItemController: NSObject {
                 .environmentObject(prefs)
                 .environmentObject(router)
         )
+    }
+
+    /// 主面板内容视图在屏幕坐标系里的真实矩形（不含 popover 窗口的透明边距）
+    private func mainPanelScreenRect(in window: NSWindow) -> NSRect? {
+        guard let view = popover.contentViewController?.view else { return nil }
+        let inWindow = view.convert(view.bounds, to: nil)
+        return window.convertToScreen(inWindow)
     }
 
     // MARK: 渲染
