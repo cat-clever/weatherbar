@@ -21,6 +21,14 @@ struct CurrentHeaderView: View {
     var body: some View {
         content
             .contentShape(RoundedRectangle(cornerRadius: Theme.headerHighlightRadius, style: .continuous))
+            .background(
+                GeometryReader { proxy in
+                    Color.clear.preference(
+                        key: CardFramesKey.self,
+                        value: [-1: proxy.frame(in: .named("panel"))]
+                    )
+                }
+            )
             .overlay(
                 RoundedRectangle(cornerRadius: Theme.headerHighlightRadius, style: .continuous)
                     .strokeBorder(Color(nsColor: .controlAccentColor), lineWidth: 1)
@@ -168,10 +176,10 @@ struct HourlyStripView: View {
 
 // MARK: - 逐日
 
-/// 收集各逐日横条在面板内的顶部位置，供左侧浮窗对齐
-struct RowTopsKey: PreferenceKey {
-    static var defaultValue: [Int: CGFloat] = [:]
-    static func reduce(value: inout [Int: CGFloat], nextValue: () -> [Int: CGFloat]) {
+/// 收集各卡片（实况区 -1、逐日横条 0…）在面板内的矩形，供浮窗定位与「是否还在当前卡片」判断
+struct CardFramesKey: PreferenceKey {
+    static var defaultValue: [Int: CGRect] = [:]
+    static func reduce(value: inout [Int: CGRect], nextValue: () -> [Int: CGRect]) {
         value.merge(nextValue()) { _, new in new }
     }
 }
@@ -227,8 +235,8 @@ struct DailyListView: View {
                 .background(
                     GeometryReader { proxy in
                         Color.clear.preference(
-                            key: RowTopsKey.self,
-                            value: [index: proxy.frame(in: .named("panel")).minY]
+                            key: CardFramesKey.self,
+                            value: [index: proxy.frame(in: .named("panel"))]
                         )
                     }
                 )

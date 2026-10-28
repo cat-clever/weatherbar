@@ -60,8 +60,8 @@ struct PopoverRootView: View {
         }
         .scrollIndicators(.never)
         .coordinateSpace(name: "panel")
-        .onPreferenceChange(RowTopsKey.self) { tops in
-            router.rowTops = tops
+        .onPreferenceChange(CardFramesKey.self) { frames in
+            router.cardFrames = frames
         }
     }
 

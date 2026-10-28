@@ -18,14 +18,19 @@ final class PopoverRouter: ObservableObject {
     @Published var expanded = false
     /// 浮窗当前显示第几天的详情（nil = 今天）
     @Published var hoveredDay: Int?
-    /// 各逐日横条在面板内的顶部位置，用于把浮窗对齐到悬停的那一条
-    @Published var rowTops: [Int: CGFloat] = [:]
+    /// 各卡片在面板内的矩形：-1 = 实况区，0… = 逐日横条
+    @Published var cardFrames: [Int: CGRect] = [:]
     var onOpenSettings: (() -> Void)?
 
     /// 浮窗顶部相对主面板顶部的偏移
     var anchorTop: CGFloat {
-        guard let day = hoveredDay, let top = rowTops[day] else { return 0 }
-        return top
+        guard let day = hoveredDay, let frame = cardFrames[day] else { return 0 }
+        return frame.minY
+    }
+
+    /// 当前悬停卡片的矩形（nil 表示还没测量到）
+    var currentCardFrame: CGRect? {
+        cardFrames[hoveredDay ?? -1]
     }
 
     private var collapseTask: Task<Void, Never>?
@@ -136,6 +141,16 @@ final class StatusItemController: NSObject {
             }
             .store(in: &cancellables)
 
+        // 卡片矩形测量完成后重新摆一次位置（不影响收起计时器）
+        router.$cardFrames
+            .removeDuplicates()
+            .receive(on: RunLoop.main)
+            .sink { [weak self] _ in
+                guard let self, self.router.expanded else { return }
+                self.updateLeftPanel(expanded: true)
+            }
+            .store(in: &cancellables)
+
         // 面板关闭时收起左浮窗（点别处关掉 popover 的情况）
         closeObserver = NotificationCenter.default.addObserver(
             forName: NSPopover.didCloseNotification, object: popover, queue: .main
@@ -195,7 +210,7 @@ final class StatusItemController: NSObject {
         hoverWatchTimer = timer
     }
 
-    /// 直接看真实鼠标位置：既不在主面板、也不在左浮窗里，连续两次就收起
+    /// 鼠标必须还停在「当前那张卡片」或左浮窗里；离开卡片就收起
     private func tickHoverWatch() {
         guard router.expanded else {
             updateHoverWatch(expanded: false)
@@ -206,9 +221,20 @@ final class StatusItemController: NSObject {
         var inside = false
 
         if let window = popover.contentViewController?.view.window,
-           let rect = mainPanelScreenRect(in: window) {
-            inside = rect.insetBy(dx: -2, dy: -2).contains(mouse)
+           let contentRect = mainPanelScreenRect(in: window) {
+            if let card = router.currentCardFrame {
+                // 面板坐标（左上原点、y 向下）换算成屏幕坐标
+                let cardRect = NSRect(x: contentRect.minX + card.minX,
+                                      y: contentRect.maxY - card.maxY,
+                                      width: card.width,
+                                      height: card.height)
+                inside = cardRect.insetBy(dx: -2, dy: -2).contains(mouse)
+            } else {
+                // 还没测量到卡片矩形时退回整窗判断
+                inside = contentRect.insetBy(dx: -2, dy: -2).contains(mouse)
+            }
         }
+
         if !inside, let flyout = leftPanel.screenFrame {
             inside = flyout.insetBy(dx: -2, dy: -2).contains(mouse)
         }
