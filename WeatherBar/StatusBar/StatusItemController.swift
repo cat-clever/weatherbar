@@ -189,16 +189,44 @@ final class StatusItemController: NSObject {
 
     // MARK: 渲染
 
+    /// 按天气类型给状态栏图标上色
+    private static func palette(for symbol: String) -> [NSColor] {
+        if symbol.contains("bolt") {
+            return [.labelColor, .systemYellow]
+        }
+        if symbol.contains("snow") || symbol.contains("sleet") {
+            return [.labelColor, .systemTeal]
+        }
+        if symbol.contains("rain") || symbol.contains("drizzle") || symbol.contains("heavyrain") {
+            return [.labelColor, .systemBlue]
+        }
+        if symbol.contains("fog") {
+            return [.secondaryLabelColor, .labelColor]
+        }
+        if symbol.contains("moon") {
+            return [.systemIndigo, .labelColor]
+        }
+        if symbol.contains("sun") {
+            return [.systemYellow, .labelColor]
+        }
+        if symbol.contains("cloud") {
+            return [.labelColor, .secondaryLabelColor]
+        }
+        return [.labelColor, .secondaryLabelColor]
+    }
+
     private func render() {
         guard let button = statusItem.button else { return }
         let state = store.displayState
         let style = prefs.statusBarStyle
 
-        let config = NSImage.SymbolConfiguration(pointSize: 13, weight: .regular)
+        // 彩色渲染：太阳黄、雨蓝、云用自适应文字色（浅色/深色菜单栏都看得见）
+        let base = NSImage.SymbolConfiguration(pointSize: 13, weight: .regular)
+        let palette = NSImage.SymbolConfiguration(paletteColors: Self.palette(for: state.symbolName))
         let image = NSImage(systemSymbolName: state.symbolName,
                             accessibilityDescription: state.symbolDescription)?
-            .withSymbolConfiguration(config)
-        image?.isTemplate = true
+            .withSymbolConfiguration(base.applying(palette))
+        image?.isTemplate = false
 
         switch style {
         case .both:
