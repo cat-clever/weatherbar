@@ -137,6 +137,7 @@ struct OnboardingView: View {
     @State private var results: [Place] = []
     @State private var searchedText = ""
     @State private var searchTask: Task<Void, Never>?
+    @FocusState private var isSearchFocused: Bool
 
     private let pages: [(title: String, body: String)] = [
         ("我在这里 👋", "天气常驻在菜单栏右上角，随时瞄一眼。"),
@@ -195,22 +196,55 @@ struct OnboardingView: View {
             RoundedRectangle(cornerRadius: 14, style: .continuous)
                 .strokeBorder(Theme.cardStroke, lineWidth: 1)
         )
-        .onChange(of: step) { _ in onLayoutChange?() }
+        .onChange(of: step) { newValue in
+            // 切到选地区那一步时自动聚焦搜索框
+            if newValue == 2 {
+                Task { @MainActor in
+                    try? await Task.sleep(nanoseconds: 200_000_000)
+                    isSearchFocused = true
+                }
+            }
+            onLayoutChange?()
+        }
         .onChange(of: results.count) { _ in onLayoutChange?() }
     }
 
     private var searchSection: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            TextField("搜索城市，如 上海 / Tokyo", text: $query)
-                .textFieldStyle(.plain)
-                .font(.system(size: 12.5))
-                .padding(.horizontal, 8)
-                .frame(height: 30)
-                .background(Color.white.opacity(0.08))
-                .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
-                .onChange(of: query) { newValue in
-                    scheduleSearch(newValue)
+        VStack(alignment: .leading, spacing: 8) {
+            ZStack(alignment: .leading) {
+                TextField("", text: $query)
+                    .textFieldStyle(.plain)
+                    .font(.system(size: 13))
+                    .foregroundStyle(Theme.textPrimary)
+                    .padding(.horizontal, 10)
+                    .frame(height: 34)
+                    .focused($isSearchFocused)
+
+                if query.isEmpty {
+                    HStack(spacing: 6) {
+                        Image(systemName: "magnifyingglass")
+                            .font(.system(size: 11, weight: .medium))
+                            .foregroundStyle(Theme.textSecondary)
+                        Text("搜索城市，如 上海 / Tokyo")
+                            .font(.system(size: 12.5))
+                            .foregroundStyle(Theme.textSecondary)
+                    }
+                    .padding(.leading, 10)
+                    .allowsHitTesting(false)
                 }
+            }
+            .background(Color.white.opacity(0.10))
+            .overlay(
+                RoundedRectangle(cornerRadius: 9, style: .continuous)
+                    .strokeBorder(isSearchFocused
+                                  ? Theme.accentBlue.opacity(0.85)
+                                  : Color.white.opacity(0.18),
+                                  lineWidth: isSearchFocused ? 1.5 : 1)
+            )
+            .clipShape(RoundedRectangle(cornerRadius: 9, style: .continuous))
+            .onChange(of: query) { newValue in
+                scheduleSearch(newValue)
+            }
 
             if !results.isEmpty {
                 VStack(alignment: .leading, spacing: 0) {
