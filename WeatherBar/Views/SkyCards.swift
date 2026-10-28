@@ -18,9 +18,6 @@ struct SkyPathCard: View {
         WallClock.startOfDay(now.addingTimeInterval(tzOffset)).addingTimeInterval(-tzOffset)
     }
 
-    /// 与 astro 里的墙钟时间同一坐标系的「现在」
-    private var wallNow: Date { now.addingTimeInterval(tzOffset) }
-
     var body: some View {
         GeometryReader { geo in
             let size = geo.size
@@ -158,25 +155,17 @@ struct SkyPathCard: View {
         VStack {
             Spacer()
             HStack(spacing: 8) {
-                Text("日出 \(countdown(to: astro.sunrise))")
+                Text("日出 \(Formatters.clockLabel(astro.sunrise))")
                 Spacer(minLength: 8)
-                Text("月落 \(countdown(to: astro.moonset))")
+                Text("日落 \(Formatters.clockLabel(astro.sunset))")
             }
-            .font(.system(size: 12.5))
+            .font(.system(size: 12.5, weight: .medium))
             .monospacedDigit()
             .foregroundStyle(.white)
             .shadow(color: .black.opacity(0.45), radius: 2, y: 1)
             .padding(.horizontal, 12)
             .padding(.bottom, 9)
         }
-    }
-
-    private func countdown(to date: Date?) -> String {
-        guard let date else { return "—" }
-        var delta = date.timeIntervalSince(wallNow)
-        if delta < 0 { delta += 86_400 }
-        let total = Int(delta.rounded())
-        return "\(total / 3600)h \((total % 3600) / 60)m"
     }
 }
 
