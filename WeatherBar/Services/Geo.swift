@@ -164,7 +164,12 @@ final class GeocodingService: @unchecked Sendable {
         let placemarks = try await geocoder.reverseGeocodeLocation(location, preferredLocale: Locale(identifier: "zh_Hans_CN"))
         guard let mark = placemarks.first else { throw LocationError.unavailable }
 
-        let name = mark.subLocality ?? mark.locality ?? mark.name ?? "当前位置"
+        // 尽量取到街道/片区级别，而不是只给一个城市名
+        let name = mark.subLocality
+            ?? mark.thoroughfare
+            ?? mark.name
+            ?? mark.locality
+            ?? "当前位置"
         return Place(name: name,
                      admin1: mark.locality ?? mark.administrativeArea,
                      country: mark.country,
