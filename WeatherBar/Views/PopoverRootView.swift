@@ -88,8 +88,12 @@ struct PopoverRootView: View {
 
     /// 主面板的逐小时只看从现在往后的部分（浮窗里才需要整天数据）
     private func upcomingHours(_ snapshot: WeatherSnapshot) -> [HourPoint] {
+        // 数据里的时间是「墙钟时间存在 UTC 容器里」，必须先把真实时间换算到同一坐标系再比较
         let now = Date()
-        let upcoming = snapshot.hourly.filter { $0.date >= now }
+        let timeZone = TimeZone(identifier: snapshot.timezone) ?? .current
+        let wallNow = now.addingTimeInterval(TimeInterval(timeZone.secondsFromGMT(for: now)))
+        let currentHour = WallClock.startOfHour(wallNow)
+        let upcoming = snapshot.hourly.filter { $0.date >= currentHour }
         return upcoming.isEmpty ? snapshot.hourly : upcoming
     }
 

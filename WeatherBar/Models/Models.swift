@@ -371,6 +371,11 @@ enum WallClock {
         calendar.startOfDay(for: date)
     }
 
+    static func startOfHour(_ date: Date) -> Date {
+        let parts = calendar.dateComponents([.year, .month, .day, .hour], from: date)
+        return calendar.date(from: parts) ?? date
+    }
+
     static func hour(of date: Date) -> Int {
         calendar.component(.hour, from: date)
     }
