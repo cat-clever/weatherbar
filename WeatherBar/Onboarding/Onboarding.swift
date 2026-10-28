@@ -5,7 +5,8 @@ import SwiftUI
 
 @MainActor
 final class OnboardingController {
-    private var panel: NSPanel?
+    private var panel: OnboardingPanel?
+    private var hosting: NSHostingView<OnboardingView>?
     private let anchor: () -> NSStatusBarButton?
     private let places: PlaceStore
     private let store: WeatherStore
@@ -42,7 +43,8 @@ final class OnboardingController {
             places: places,
             store: store,
             onFinish: { [weak self] in self?.dismiss() },
-            onSkip: { [weak self] in self?.dismiss() }
+            onSkip: { [weak self] in self?.dismiss() },
+            onLayoutChange: { [weak self] in self?.resizePanel() }
         )
 
         let hosting = NSHostingView(rootView: content)
@@ -51,7 +53,7 @@ final class OnboardingController {
         let height = max(fitting.height, 150)
         hosting.frame = NSRect(x: 0, y: 0, width: width, height: height)
 
-        let panel = NSPanel(
+        let panel = OnboardingPanel(
             contentRect: NSRect(x: 0, y: 0, width: width, height: height),
             styleMask: [.borderless, .nonactivatingPanel],
             backing: .buffered,
@@ -74,6 +76,9 @@ final class OnboardingController {
         panel.setFrameOrigin(NSPoint(x: x, y: y))
         panel.alphaValue = 0
         panel.orderFrontRegardless()
+        // 需要能接收键盘输入（搜索框）
+        NSApp.activate(ignoringOtherApps: true)
+        panel.makeKeyAndOrderFront(nil)
 
         NSAnimationContext.runAnimationGroup { context in
             context.duration = 0.22
@@ -81,6 +86,19 @@ final class OnboardingController {
             panel.animator().alphaValue = 1
         }
         self.panel = panel
+        self.hosting = hosting
+    }
+
+    /// 内容变高（切到第 3 步、搜索出结果）时把面板拉长，顶边保持不动
+    private func resizePanel() {
+        guard let panel, let hosting else { return }
+        hosting.layoutSubtreeIfNeeded()
+        let newHeight = max(hosting.fittingSize.height, 150)
+        let old = panel.frame
+        guard abs(old.height - newHeight) > 0.5 else { return }
+        let newOrigin = NSPoint(x: old.minX, y: old.minY + (old.height - newHeight))
+        panel.setFrame(NSRect(origin: newOrigin, size: NSSize(width: old.width, height: newHeight)),
+                       display: true)
     }
 
     func dismiss() {
@@ -93,9 +111,15 @@ final class OnboardingController {
         } completionHandler: { [weak self] in
             panel.orderOut(nil)
             self?.panel = nil
+            self?.hosting = nil
             self?.onFinish()
         }
     }
+}
+
+/// 允许成为 key window，否则搜索框收不到键盘输入
+final class OnboardingPanel: NSPanel {
+    override var canBecomeKey: Bool { true }
 }
 
 // MARK: - 引导内容
@@ -105,10 +129,13 @@ struct OnboardingView: View {
     @ObservedObject var store: WeatherStore
     let onFinish: () -> Void
     let onSkip: () -> Void
+    /// 内容高度变化时通知外部调整面板大小
+    var onLayoutChange: (() -> Void)? = nil
 
     @State private var step = 0
     @State private var query = ""
     @State private var results: [Place] = []
+    @State private var searchedText = ""
     @State private var searchTask: Task<Void, Never>?
 
     private let pages: [(title: String, body: String)] = [
@@ -168,6 +195,8 @@ struct OnboardingView: View {
             RoundedRectangle(cornerRadius: 14, style: .continuous)
                 .strokeBorder(Theme.cardStroke, lineWidth: 1)
         )
+        .onChange(of: step) { _ in onLayoutChange?() }
+        .onChange(of: results.count) { _ in onLayoutChange?() }
     }
 
     private var searchSection: some View {
@@ -191,21 +220,33 @@ struct OnboardingView: View {
                             Task { await store.refresh(force: true) }
                             onFinish()
                         } label: {
-                            HStack {
+                            HStack(spacing: 6) {
                                 Text(place.displayName)
-                                    .font(.system(size: 12.5, weight: .medium))
+                                    .font(.system(size: 13, weight: .medium))
                                     .foregroundStyle(Theme.textPrimary)
-                                Spacer()
+                                Spacer(minLength: 4)
                                 Text(place.subtitle)
-                                    .font(.system(size: 10.5))
-                                    .foregroundStyle(Theme.textTertiary)
+                                    .font(.system(size: 11))
+                                    .foregroundStyle(Theme.textSecondary)
                             }
                             .contentShape(Rectangle())
-                            .padding(.vertical, 5)
+                            .padding(.horizontal, 8)
+                            .frame(height: 30)
                         }
                         .buttonStyle(.plain)
                     }
                 }
+                .background(Color.white.opacity(0.06))
+                .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 8, style: .continuous)
+                        .strokeBorder(Color.white.opacity(0.08), lineWidth: 1)
+                )
+            } else if searchedText != "" {
+                Text("没有找到「\(searchedText)」")
+                    .font(.system(size: 11.5))
+                    .foregroundStyle(Theme.textSecondary)
+                    .padding(.vertical, 2)
             }
 
             Button {
@@ -228,8 +269,10 @@ struct OnboardingView: View {
 
     private func scheduleSearch(_ text: String) {
         searchTask?.cancel()
-        guard text.trimmingCharacters(in: .whitespaces).count >= 1 else {
+        let trimmed = text.trimmingCharacters(in: .whitespaces)
+        guard !trimmed.isEmpty else {
             results = []
+            searchedText = ""
             return
         }
         searchTask = Task {
@@ -237,7 +280,10 @@ struct OnboardingView: View {
             guard !Task.isCancelled else { return }
             let found = (try? await GeocodingService.shared.search(text)) ?? []
             guard !Task.isCancelled else { return }
-            await MainActor.run { results = found }
+            await MainActor.run {
+                results = found
+                searchedText = trimmed
+            }
         }
     }
 }
