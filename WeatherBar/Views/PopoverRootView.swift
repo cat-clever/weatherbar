@@ -27,13 +27,6 @@ struct PopoverRootView: View {
             RoundedRectangle(cornerRadius: 16, style: .continuous)
                 .strokeBorder(Theme.cardStroke, lineWidth: 1)
         )
-        .onHover { hovering in
-            // 进入面板即展开左浮窗；收起只跟随 popover 关闭，
-            // 避免鼠标划过逐小时横条（NSViewRepresentable）时被误判为离开而闪退
-            if hovering {
-                router.expand()
-            }
-        }
         .preferredColorScheme(.dark)
     }
 

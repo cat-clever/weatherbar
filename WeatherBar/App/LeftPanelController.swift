@@ -8,8 +8,6 @@ final class LeftPanelController {
     private var panel: NSPanel?
 
     var isVisible: Bool { panel?.isVisible ?? false }
-    /// 浮窗在屏幕坐标系中的位置，用于判断鼠标是否还在里面
-    var screenFrame: NSRect? { panel?.isVisible == true ? panel?.frame : nil }
 
     func show<Content: View>(beside parent: NSWindow, anchorRect: NSRect, anchorTop: CGFloat, content: Content) {
         let size = NSSize(width: Theme.leftPanelWidth, height: Theme.panelHeight)

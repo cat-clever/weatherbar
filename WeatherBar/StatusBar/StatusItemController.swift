@@ -28,11 +28,6 @@ final class PopoverRouter: ObservableObject {
         return frame.minY
     }
 
-    /// 当前悬停卡片的矩形（nil 表示还没测量到）
-    var currentCardFrame: CGRect? {
-        cardFrames[hoveredDay ?? -1]
-    }
-
     private var collapseTask: Task<Void, Never>?
 
     func reset() {
@@ -83,8 +78,6 @@ final class StatusItemController: NSObject {
     private let leftPanel = LeftPanelController()
     private var cancellables = Set<AnyCancellable>()
     private var closeObserver: NSObjectProtocol?
-    private var hoverWatchTimer: Timer?
-    private var outsideTicks = 0
 
     var onShowOnboarding: (() -> Void)?
     var onCheckForUpdates: (() -> Void)?
@@ -137,11 +130,10 @@ final class StatusItemController: NSObject {
             .receive(on: RunLoop.main)
             .sink { [weak self] expanded, _ in
                 self?.updateLeftPanel(expanded: expanded)
-                self?.updateHoverWatch(expanded: expanded)
             }
             .store(in: &cancellables)
 
-        // 卡片矩形测量完成后重新摆一次位置（不影响收起计时器）
+        // 卡片矩形测量完成后重新摆一次位置
         router.$cardFrames
             .removeDuplicates()
             .receive(on: RunLoop.main)
@@ -193,61 +185,6 @@ final class StatusItemController: NSObject {
         guard let view = popover.contentViewController?.view else { return nil }
         let inWindow = view.convert(view.bounds, to: nil)
         return window.convertToScreen(inWindow)
-    }
-
-    // MARK: - 鼠标离开时收起
-
-    private func updateHoverWatch(expanded: Bool) {
-        hoverWatchTimer?.invalidate()
-        hoverWatchTimer = nil
-        outsideTicks = 0
-        guard expanded else { return }
-
-        let timer = Timer(timeInterval: 0.12, repeats: true) { [weak self] _ in
-            Task { @MainActor in self?.tickHoverWatch() }
-        }
-        RunLoop.main.add(timer, forMode: .common)
-        hoverWatchTimer = timer
-    }
-
-    /// 鼠标必须还停在「当前那张卡片」或左浮窗里；离开卡片就收起
-    private func tickHoverWatch() {
-        guard router.expanded else {
-            updateHoverWatch(expanded: false)
-            return
-        }
-
-        let mouse = NSEvent.mouseLocation
-        var inside = false
-
-        if let window = popover.contentViewController?.view.window,
-           let contentRect = mainPanelScreenRect(in: window) {
-            if let card = router.currentCardFrame {
-                // 面板坐标（左上原点、y 向下）换算成屏幕坐标
-                let cardRect = NSRect(x: contentRect.minX + card.minX,
-                                      y: contentRect.maxY - card.maxY,
-                                      width: card.width,
-                                      height: card.height)
-                inside = cardRect.insetBy(dx: -2, dy: -2).contains(mouse)
-            } else {
-                // 还没测量到卡片矩形时退回整窗判断
-                inside = contentRect.insetBy(dx: -2, dy: -2).contains(mouse)
-            }
-        }
-
-        if !inside, let flyout = leftPanel.screenFrame {
-            inside = flyout.insetBy(dx: -2, dy: -2).contains(mouse)
-        }
-
-        if inside {
-            outsideTicks = 0
-        } else {
-            outsideTicks += 1
-            if outsideTicks >= 2 {
-                router.collapseNow()
-                updateHoverWatch(expanded: false)
-            }
-        }
     }
 
     // MARK: 渲染

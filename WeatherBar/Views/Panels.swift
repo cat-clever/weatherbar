@@ -39,11 +39,16 @@ struct CurrentHeaderView: View {
                 withAnimation(.easeOut(duration: 0.12)) {
                     isHovering = hovering
                 }
-                // 悬停实况区时展开左侧详情栏
-                if hovering, !router.expanded {
-                    withAnimation(.easeOut(duration: 0.16)) {
-                        router.expanded = true
+                // 悬停实况区时展开左侧详情栏；离开这块卡片就收起
+                if hovering {
+                    if !router.expanded {
+                        withAnimation(.easeOut(duration: 0.16)) {
+                            router.expanded = true
+                        }
                     }
+                    router.expand()
+                } else {
+                    router.scheduleCollapse()
                 }
             }
     }
@@ -244,9 +249,12 @@ struct DailyListView: View {
                 .hoverHighlight()
                 .contentShape(Rectangle())
                 .onHover { hovering in
-                    guard hovering else { return }
-                    router.hoveredDay = index
-                    router.expand()
+                    if hovering {
+                        router.hoveredDay = index
+                        router.expand()
+                    } else if router.hoveredDay == index {
+                        router.scheduleCollapse()
+                    }
                 }
                 .help("最高风速：\(Formatters.wind(day.windMax, unit: prefs.windUnit)) · 阵风：\(Formatters.wind(day.gustMax, unit: prefs.windUnit))")
             }
