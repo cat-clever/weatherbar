@@ -39,8 +39,9 @@ struct CurrentHeaderView: View {
                 withAnimation(.easeOut(duration: 0.12)) {
                     isHovering = hovering
                 }
-                // 悬停实况区时展开左侧详情栏；离开这块卡片就收起
+                // 悬停实况区时展开左侧详情栏，并切回「今天」；离开这块卡片就收起
                 if hovering {
+                    router.hoveredDay = nil
                     if !router.expanded {
                         withAnimation(.easeOut(duration: 0.16)) {
                             router.expanded = true
@@ -171,6 +172,13 @@ struct HourlyStripView: View {
         }
         .frame(height: 84)
         .card()
+        .onHover { hovering in
+            // 悬停逐小时（也是今天的数据）时，浮窗切回今天
+            if hovering {
+                router.hoveredDay = nil
+                router.expand()
+            }
+        }
     }
 
     private func isDay(_ date: Date) -> Bool {
@@ -257,6 +265,12 @@ struct DailyListView: View {
                     }
                 }
                 .help("最高风速：\(Formatters.wind(day.windMax, unit: prefs.windUnit)) · 阵风：\(Formatters.wind(day.gustMax, unit: prefs.windUnit))")
+            }
+        }
+        .onHover { hovering in
+            // 离开整个逐日列表就收起（逐条 exit 在快速划过时不一定触发）
+            if !hovering, router.hoveredDay != nil {
+                router.scheduleCollapse()
             }
         }
     }
