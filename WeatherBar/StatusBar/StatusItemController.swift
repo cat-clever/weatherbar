@@ -189,7 +189,7 @@ final class StatusItemController: NSObject {
 
     // MARK: 渲染
 
-    /// 按天气类型给状态栏图标上色
+    /// 按天气类型给状态栏图标上色（调色板按图层顺序对应 SF Symbol 的各层）
     private static func palette(for symbol: String) -> [NSColor] {
         if symbol.contains("bolt") {
             return [.labelColor, .systemYellow]
@@ -197,20 +197,23 @@ final class StatusItemController: NSObject {
         if symbol.contains("snow") || symbol.contains("sleet") {
             return [.labelColor, .systemTeal]
         }
-        if symbol.contains("rain") || symbol.contains("drizzle") || symbol.contains("heavyrain") {
+        if symbol.contains("rain") || symbol.contains("drizzle") {
             return [.labelColor, .systemBlue]
         }
         if symbol.contains("fog") {
             return [.secondaryLabelColor, .labelColor]
+        }
+        if symbol.contains("cloud") && symbol.contains("sun") {
+            return [.labelColor, .systemYellow]
+        }
+        if symbol.contains("cloud") && symbol.contains("moon") {
+            return [.labelColor, .systemIndigo]
         }
         if symbol.contains("moon") {
             return [.systemIndigo, .labelColor]
         }
         if symbol.contains("sun") {
             return [.systemYellow, .labelColor]
-        }
-        if symbol.contains("cloud") {
-            return [.labelColor, .secondaryLabelColor]
         }
         return [.labelColor, .secondaryLabelColor]
     }
