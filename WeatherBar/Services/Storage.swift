@@ -17,68 +17,42 @@ enum KeychainKey: String, CaseIterable {
 
 final class KeychainStore: @unchecked Sendable {
     static let shared = KeychainStore()
-    private let service = "com.catclever.weatherbar"
     private let lock = NSLock()
+
+    // 说明：早期版本把 Key 存进系统钥匙串，但同时又往 UserDefaults 写了一份 fallback，
+    // 等于钥匙串并没有提供额外保护。而本应用是未签名分发，每次更新二进制指纹都会变，
+    // macOS 就认为「不是同一个 App」而反复弹「请输入登录钥匙串密码」。
+    // 现在统一改用 App 沙盒容器内的偏好存储（文件权限由沙盒隔离），不再访问钥匙串。
+
+    private func storageKey(_ key: KeychainKey) -> String { "secret." + key.rawValue }
+    private func legacyKey(_ key: KeychainKey) -> String { "fallback." + key.rawValue }
 
     func string(for key: KeychainKey) -> String? {
         lock.lock(); defer { lock.unlock() }
-        if let value = readKeychain(key) { return value }
-        // 沙盒/签名受限时的降级存储
-        return UserDefaults.standard.string(forKey: "fallback." + key.rawValue)
+        let defaults = UserDefaults.standard
+        if let value = defaults.string(forKey: storageKey(key)), !value.isEmpty { return value }
+        // 迁移旧版本写在 fallback.* 里的值
+        if let legacy = defaults.string(forKey: legacyKey(key)), !legacy.isEmpty {
+            defaults.set(legacy, forKey: storageKey(key))
+            defaults.removeObject(forKey: legacyKey(key))
+            return legacy
+        }
+        return nil
     }
 
     func set(_ value: String?, for key: KeychainKey) {
         lock.lock(); defer { lock.unlock() }
+        let defaults = UserDefaults.standard
         if let value, !value.isEmpty {
-            writeKeychain(value, for: key)
-            UserDefaults.standard.set(value, forKey: "fallback." + key.rawValue)
+            defaults.set(value, forKey: storageKey(key))
         } else {
-            deleteKeychain(key)
-            UserDefaults.standard.removeObject(forKey: "fallback." + key.rawValue)
+            defaults.removeObject(forKey: storageKey(key))
         }
+        defaults.removeObject(forKey: legacyKey(key))
     }
 
     func hasValue(for key: KeychainKey) -> Bool {
         !(string(for: key) ?? "").isEmpty
-    }
-
-    // MARK: 原始操作
-
-    private func query(_ key: KeychainKey) -> [String: Any] {
-        [
-            kSecClass as String: kSecClassGenericPassword,
-            kSecAttrService as String: service,
-            kSecAttrAccount as String: key.rawValue
-        ]
-    }
-
-    private func readKeychain(_ key: KeychainKey) -> String? {
-        var q = query(key)
-        q[kSecReturnData as String] = true
-        q[kSecMatchLimit as String] = kSecMatchLimitOne
-        var item: CFTypeRef?
-        let status = SecItemCopyMatching(q as CFDictionary, &item)
-        guard status == errSecSuccess, let data = item as? Data else { return nil }
-        return String(data: data, encoding: .utf8)
-    }
-
-    @discardableResult
-    private func writeKeychain(_ value: String, for key: KeychainKey) -> Bool {
-        let data = Data(value.utf8)
-        let base = query(key)
-        let status = SecItemCopyMatching(base as CFDictionary, nil)
-        if status == errSecSuccess {
-            let attrs: [String: Any] = [kSecValueData as String: data]
-            return SecItemUpdate(base as CFDictionary, attrs as CFDictionary) == errSecSuccess
-        }
-        var add = base
-        add[kSecValueData as String] = data
-        add[kSecAttrAccessible as String] = kSecAttrAccessibleAfterFirstUnlock
-        return SecItemAdd(add as CFDictionary, nil) == errSecSuccess
-    }
-
-    private func deleteKeychain(_ key: KeychainKey) {
-        SecItemDelete(query(key) as CFDictionary)
     }
 }
 
