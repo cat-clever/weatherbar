@@ -76,6 +76,7 @@ final class StatusItemController: NSObject {
     private let statusItem: NSStatusItem
     private let popover = NSPopover()
     private let leftPanel = LeftPanelController()
+    private let popoverWatcher = MouseHoverWatcher()
     private var cancellables = Set<AnyCancellable>()
     private var closeObserver: NSObjectProtocol?
 
@@ -92,6 +93,18 @@ final class StatusItemController: NSObject {
         self.statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
         super.init()
         router.onOpenSettings = { [weak self] in self?.openSettingsWindow() }
+
+        // 鼠标进出主面板 / 左浮窗：用 NSTrackingArea 判断，避免 SwiftUI onHover 被原生子视图干扰
+        popoverWatcher.onEnter = { [weak self] in self?.router.expand() }
+        popoverWatcher.onExit = { [weak self] in self?.router.scheduleCollapse() }
+        leftPanel.onHoverChange = { [weak self] hovering in
+            guard let self else { return }
+            if hovering {
+                self.router.expand()
+            } else {
+                self.router.scheduleCollapse()
+            }
+        }
     }
 
     var statusButton: NSStatusBarButton? { statusItem.button }
@@ -251,6 +264,7 @@ final class StatusItemController: NSObject {
         popover.contentSize = NSSize(width: Theme.panelWidth, height: Theme.panelHeight)
         controller.view.layoutSubtreeIfNeeded()
         disableScrollIndicators(in: controller.view)
+        popoverWatcher.attach(to: controller.view)
         popover.show(relativeTo: button.bounds, of: button, preferredEdge: .minY)
         NSApp.activate(ignoringOtherApps: true)
     }
