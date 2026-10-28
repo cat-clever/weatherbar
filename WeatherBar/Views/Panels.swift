@@ -167,6 +167,7 @@ struct HourlyStripView: View {
 
 struct DailyListView: View {
     @EnvironmentObject private var prefs: PreferencesStore
+    @EnvironmentObject private var router: PopoverRouter
     let days: [DayPoint]
 
     var body: some View {
@@ -215,6 +216,11 @@ struct DailyListView: View {
                 .card(raised: index == 0)
                 .hoverHighlight()
                 .contentShape(Rectangle())
+                .onHover { hovering in
+                    guard hovering else { return }
+                    router.hoveredDay = index
+                    router.expand()
+                }
                 .help("最高风速：\(Formatters.wind(day.windMax, unit: prefs.windUnit)) · 阵风：\(Formatters.wind(day.gustMax, unit: prefs.windUnit))")
             }
         }

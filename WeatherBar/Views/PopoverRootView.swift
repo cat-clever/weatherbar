@@ -51,10 +51,6 @@ struct PopoverRootView: View {
 
                     DailyListView(days: snapshot.daily)
 
-                    if !snapshot.hourly.isEmpty {
-                        TrendChartsView(hours: snapshot.hourly)
-                    }
-
                     footer(snapshot)
                 } else {
                     placeholder

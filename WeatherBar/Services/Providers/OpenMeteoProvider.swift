@@ -169,7 +169,8 @@ final class OpenMeteoProvider: WeatherProvider {
 
         var hourPoints: [HourPoint] = []
         if startIndex < hourlyDates.count {
-            let upper = min(startIndex + max(hours, 12), hourlyDates.count)
+            // 保留未来 7 天，供左侧浮窗按天切分
+            let upper = min(hourlyDates.count, startIndex + 24 * 7)
             for i in startIndex..<upper {
                 hourPoints.append(HourPoint(
                     date: hourlyDates[i],

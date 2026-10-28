@@ -16,6 +16,8 @@ final class PopoverRouter: ObservableObject {
     @Published var route: PopoverRoute = .main
     /// 鼠标悬停实况区时，在左侧弹出独立的详情浮窗
     @Published var expanded = false
+    /// 浮窗当前显示第几天的详情（nil = 今天）
+    @Published var hoveredDay: Int?
     var onOpenSettings: (() -> Void)?
 
     private var collapseTask: Task<Void, Never>?
@@ -41,6 +43,7 @@ final class PopoverRouter: ObservableObject {
             try? await Task.sleep(nanoseconds: nanoseconds)
             guard !Task.isCancelled else { return }
             self?.expanded = false
+            self?.hoveredDay = nil
         }
     }
 
@@ -48,6 +51,7 @@ final class PopoverRouter: ObservableObject {
         collapseTask?.cancel()
         collapseTask = nil
         if expanded { expanded = false }
+        hoveredDay = nil
     }
 }
 

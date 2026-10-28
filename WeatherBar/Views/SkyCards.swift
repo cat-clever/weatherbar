@@ -218,12 +218,8 @@ struct SunDetailCard: View {
 // MARK: - 降水
 
 struct PrecipitationCard: View {
-    let current: CurrentConditions
-    let hourly: [HourPoint]
-
-    private var chance: Int {
-        hourly.first?.precipitationChance ?? 0
-    }
+    let chance: Int
+    let amount: Double
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
@@ -232,7 +228,7 @@ struct PrecipitationCard: View {
                 .foregroundStyle(Theme.accentBlue)
 
             valueRow("降雨", "\(chance)%")
-            valueRow("降水量", "\(decimal(current.precipitation, current.precipitation < 10 ? 1 : 0)) 毫米")
+            valueRow("降水量", "\(decimal(amount, amount < 10 ? 1 : 0)) 毫米")
         }
         .card()
         .hoverHighlight()
