@@ -120,7 +120,7 @@ struct HourlyStripView: View {
     let now: Date
 
     var body: some View {
-        ScrollView(.horizontal, showsIndicators: false) {
+        ScrollView(.horizontal) {
             HStack(spacing: 0) {
                 ForEach(Array(hours.prefix(24).enumerated()), id: \.element.id) { item in
                     let index = item.offset
@@ -153,6 +153,7 @@ struct HourlyStripView: View {
             }
             .padding(.horizontal, 2)
         }
+        .scrollIndicators(.never)
         .card()
         .hoverHighlight()
     }

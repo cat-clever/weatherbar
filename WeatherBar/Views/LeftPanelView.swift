@@ -16,7 +16,7 @@ struct LeftPanelView: View {
                 content
                     .padding(Theme.pagePadding)
             }
-            .scrollIndicators(.hidden)
+            .scrollIndicators(.never)
         }
         .frame(width: Theme.leftPanelWidth, height: Theme.panelHeight)
         .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
@@ -37,14 +37,17 @@ struct LeftPanelView: View {
     @ViewBuilder
     private var content: some View {
         if let snapshot = store.snapshot {
-            let index = min(max(router.hoveredDay ?? 0, 0), max(snapshot.daily.count - 1, 0))
-            let isToday = index == 0
+            let hoveredDay = router.hoveredDay
+            let index = min(max(hoveredDay ?? 0, 0), max(snapshot.daily.count - 1, 0))
+            // 只有悬停主面板（没有指定某一天）时才显示日月轨迹/月相/太阳；
+            // 悬停任何一条逐日横条（含今天）都显示同一套当日卡片。
+            let showLiveCards = hoveredDay == nil
             let day: DayPoint? = snapshot.daily.indices.contains(index) ? snapshot.daily[index] : nil
             let hours = hours(in: snapshot, for: day)
-            let astro = astro(in: snapshot, for: day, isToday: isToday)
+            let astro = astro(in: snapshot, for: day, isToday: index == 0)
 
             VStack(spacing: Theme.blockGap) {
-                if isToday {
+                if showLiveCards {
                     SkyPathCard(astro: snapshot.astro, place: snapshot.place)
                     MoonDetailCard(astro: snapshot.astro)
                     SunDetailCard(astro: snapshot.astro)
@@ -56,8 +59,8 @@ struct LeftPanelView: View {
                         .foregroundStyle(Theme.textTertiary)
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 20)
-                } else if !isToday {
-                    // 今天的逐小时主面板已经有了，这里只给其他天补
+                } else if !showLiveCards {
+                    // 悬停主面板时主面板已经有今天的逐小时，这里不重复
                     HourlyStripView(hours: hours, now: Date())
                 }
 

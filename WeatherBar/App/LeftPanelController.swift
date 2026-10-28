@@ -33,6 +33,8 @@ final class LeftPanelController {
         let hosting = NSHostingView(rootView: content)
         hosting.frame = NSRect(origin: .zero, size: size)
         panel.contentView = hosting
+        hosting.layoutSubtreeIfNeeded()
+        Self.hideScrollers(in: hosting)
 
         let parentFrame = parent.frame
         var origin = NSPoint(
@@ -65,5 +67,22 @@ final class LeftPanelController {
         guard let panel, panel.isVisible else { return }
         panel.parent?.removeChildWindow(panel)
         panel.orderOut(nil)
+    }
+
+    /// SwiftUI 的 scrollIndicators(.never) 在部分系统版本上不彻底，这里再从 AppKit 层关掉滚动条
+    private static func hideScrollers(in view: NSView) {
+        disableScrollIndicators(in: view)
+    }
+}
+
+/// 递归关掉所有 NSScrollView 的滚动条（不影响滚动本身）
+func disableScrollIndicators(in view: NSView) {
+    if let scrollView = view as? NSScrollView {
+        scrollView.hasVerticalScroller = false
+        scrollView.hasHorizontalScroller = false
+        scrollView.autohidesScrollers = true
+    }
+    for subview in view.subviews {
+        disableScrollIndicators(in: subview)
     }
 }

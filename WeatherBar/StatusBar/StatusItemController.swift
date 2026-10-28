@@ -226,6 +226,8 @@ final class StatusItemController: NSObject {
         controller.view.frame.size = NSSize(width: Theme.panelWidth, height: Theme.panelHeight)
         popover.contentViewController = controller
         popover.contentSize = NSSize(width: Theme.panelWidth, height: Theme.panelHeight)
+        controller.view.layoutSubtreeIfNeeded()
+        disableScrollIndicators(in: controller.view)
         popover.show(relativeTo: button.bounds, of: button, preferredEdge: .minY)
         NSApp.activate(ignoringOtherApps: true)
     }

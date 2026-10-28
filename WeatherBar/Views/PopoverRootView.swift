@@ -58,7 +58,7 @@ struct PopoverRootView: View {
             }
             .padding(Theme.pagePadding)
         }
-        .scrollIndicators(.hidden)
+        .scrollIndicators(.never)
     }
 
     private var placeholder: some View {
