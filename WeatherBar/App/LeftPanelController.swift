@@ -6,17 +6,10 @@ import SwiftUI
 @MainActor
 final class LeftPanelController {
     private var panel: NSPanel?
-    private let watcher = MouseHoverWatcher()
-
-    /// true = 鼠标进入浮窗，false = 离开浮窗
-    var onHoverChange: ((Bool) -> Void)?
-
-    init() {
-        watcher.onEnter = { [weak self] in self?.onHoverChange?(true) }
-        watcher.onExit = { [weak self] in self?.onHoverChange?(false) }
-    }
 
     var isVisible: Bool { panel?.isVisible ?? false }
+    /// 浮窗在屏幕坐标系中的位置，用于判断鼠标是否还在里面
+    var screenFrame: NSRect? { panel?.isVisible == true ? panel?.frame : nil }
 
     func show<Content: View>(beside parent: NSWindow, anchorRect: NSRect, anchorTop: CGFloat, content: Content) {
         let size = NSSize(width: Theme.leftPanelWidth, height: Theme.panelHeight)
@@ -46,7 +39,6 @@ final class LeftPanelController {
         panel.contentView = hosting
         hosting.layoutSubtreeIfNeeded()
         Self.hideScrollers(in: hosting)
-        watcher.attach(to: hosting)
 
         let origin = Self.origin(beside: anchorRect, anchorTop: anchorTop, size: size,
                                  screen: parent.screen ?? NSScreen.main)

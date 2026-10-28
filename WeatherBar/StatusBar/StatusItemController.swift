@@ -76,9 +76,10 @@ final class StatusItemController: NSObject {
     private let statusItem: NSStatusItem
     private let popover = NSPopover()
     private let leftPanel = LeftPanelController()
-    private let popoverWatcher = MouseHoverWatcher()
     private var cancellables = Set<AnyCancellable>()
     private var closeObserver: NSObjectProtocol?
+    private var hoverWatchTimer: Timer?
+    private var outsideTicks = 0
 
     var onShowOnboarding: (() -> Void)?
     var onCheckForUpdates: (() -> Void)?
@@ -90,21 +91,9 @@ final class StatusItemController: NSObject {
         self.prefs = prefs
         self.router = router
         self.settingsWindow = settingsWindow
-        self.statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
+        statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
         super.init()
         router.onOpenSettings = { [weak self] in self?.openSettingsWindow() }
-
-        // 鼠标进出主面板 / 左浮窗：用 NSTrackingArea 判断，避免 SwiftUI onHover 被原生子视图干扰
-        popoverWatcher.onEnter = { [weak self] in self?.router.expand() }
-        popoverWatcher.onExit = { [weak self] in self?.router.scheduleCollapse() }
-        leftPanel.onHoverChange = { [weak self] hovering in
-            guard let self else { return }
-            if hovering {
-                self.router.expand()
-            } else {
-                self.router.scheduleCollapse()
-            }
-        }
     }
 
     var statusButton: NSStatusBarButton? { statusItem.button }
@@ -143,6 +132,7 @@ final class StatusItemController: NSObject {
             .receive(on: RunLoop.main)
             .sink { [weak self] expanded, _ in
                 self?.updateLeftPanel(expanded: expanded)
+                self?.updateHoverWatch(expanded: expanded)
             }
             .store(in: &cancellables)
 
@@ -188,6 +178,50 @@ final class StatusItemController: NSObject {
         guard let view = popover.contentViewController?.view else { return nil }
         let inWindow = view.convert(view.bounds, to: nil)
         return window.convertToScreen(inWindow)
+    }
+
+    // MARK: - 鼠标离开时收起
+
+    private func updateHoverWatch(expanded: Bool) {
+        hoverWatchTimer?.invalidate()
+        hoverWatchTimer = nil
+        outsideTicks = 0
+        guard expanded else { return }
+
+        let timer = Timer(timeInterval: 0.12, repeats: true) { [weak self] _ in
+            Task { @MainActor in self?.tickHoverWatch() }
+        }
+        RunLoop.main.add(timer, forMode: .common)
+        hoverWatchTimer = timer
+    }
+
+    /// 直接看真实鼠标位置：既不在主面板、也不在左浮窗里，连续两次就收起
+    private func tickHoverWatch() {
+        guard router.expanded else {
+            updateHoverWatch(expanded: false)
+            return
+        }
+
+        let mouse = NSEvent.mouseLocation
+        var inside = false
+
+        if let window = popover.contentViewController?.view.window,
+           let rect = mainPanelScreenRect(in: window) {
+            inside = rect.insetBy(dx: -2, dy: -2).contains(mouse)
+        }
+        if !inside, let flyout = leftPanel.screenFrame {
+            inside = flyout.insetBy(dx: -2, dy: -2).contains(mouse)
+        }
+
+        if inside {
+            outsideTicks = 0
+        } else {
+            outsideTicks += 1
+            if outsideTicks >= 2 {
+                router.collapseNow()
+                updateHoverWatch(expanded: false)
+            }
+        }
     }
 
     // MARK: 渲染
@@ -264,7 +298,6 @@ final class StatusItemController: NSObject {
         popover.contentSize = NSSize(width: Theme.panelWidth, height: Theme.panelHeight)
         controller.view.layoutSubtreeIfNeeded()
         disableScrollIndicators(in: controller.view)
-        popoverWatcher.attach(to: controller.view)
         popover.show(relativeTo: button.bounds, of: button, preferredEdge: .minY)
         NSApp.activate(ignoringOtherApps: true)
     }
