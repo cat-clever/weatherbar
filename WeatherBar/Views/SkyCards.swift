@@ -25,10 +25,12 @@ struct SkyPathCard: View {
         GeometryReader { geo in
             let size = geo.size
             let horizonY = size.height * horizonRatio
+            // 按当天日月高度范围算纵向比例，让曲线上下都离卡片边缘留一点余量
+            let scale = verticalScale(size: size, horizonY: horizonY)
 
             ZStack(alignment: .topLeading) {
-                backdrop(size: size, horizonY: horizonY)
-                markers(size: size, horizonY: horizonY)
+                backdrop(size: size, horizonY: horizonY, scale: scale)
+                markers(size: size, horizonY: horizonY, scale: scale)
                 labels
             }
         }
@@ -37,9 +39,29 @@ struct SkyPathCard: View {
         .hoverHighlight()
     }
 
+    /// 每 1° 高度角对应的纵向像素：取「向上不顶到上边、向下不压到底部文案」两者较小值
+    private func verticalScale(size: CGSize, horizonY: CGFloat) -> CGFloat {
+        let calculator = AstroCalculator()
+        var altitudes: [Double] = []
+        for index in 0...48 {
+            let date = localDayStart.addingTimeInterval(Double(index) / 48 * 86_399)
+            altitudes.append(calculator.sunAltitude(date, lat: place.latitude, lon: place.longitude))
+            altitudes.append(calculator.moonAltitudeAt(date, lat: place.latitude, lon: place.longitude))
+        }
+
+        let topInset: CGFloat = 14
+        let bottomInset: CGFloat = 22
+        let peak = max(altitudes.max() ?? 60, 5)
+        let trough = min(altitudes.min() ?? -60, -5)
+
+        let up = (horizonY - topInset) / CGFloat(peak)
+        let down = (size.height - horizonY - bottomInset) / CGFloat(-trough)
+        return max(0.6, min(up, down))
+    }
+
     // MARK: 背景 + 曲线
 
-    private func backdrop(size: CGSize, horizonY: CGFloat) -> some View {
+    private func backdrop(size: CGSize, horizonY: CGFloat, scale: CGFloat) -> some View {
         let calculator = AstroCalculator()
 
         return Canvas { context, canvasSize in
@@ -74,20 +96,20 @@ struct SkyPathCard: View {
             ))
 
             context.stroke(
-                curve(size: canvasSize, horizonY: horizonY) { calculator.sunAltitude($0, lat: place.latitude, lon: place.longitude) },
+                curve(size: canvasSize, horizonY: horizonY, scale: scale) { calculator.sunAltitude($0, lat: place.latitude, lon: place.longitude) },
                 with: .color(Color(hex: 0x9ACBFF).opacity(0.9)),
                 style: StrokeStyle(lineWidth: 2, lineCap: .round)
             )
 
             context.stroke(
-                curve(size: canvasSize, horizonY: horizonY) { calculator.moonAltitudeAt($0, lat: place.latitude, lon: place.longitude) },
+                curve(size: canvasSize, horizonY: horizonY, scale: scale) { calculator.moonAltitudeAt($0, lat: place.latitude, lon: place.longitude) },
                 with: .color(.white.opacity(0.30)),
                 style: StrokeStyle(lineWidth: 2, lineCap: .round)
             )
         }
     }
 
-    private func curve(size: CGSize, horizonY: CGFloat, altitudeAt: (Date) -> Double) -> Path {
+    private func curve(size: CGSize, horizonY: CGFloat, scale: CGFloat, altitudeAt: (Date) -> Double) -> Path {
         var path = Path()
         let steps = 96
         let start = localDayStart
@@ -96,7 +118,7 @@ struct SkyPathCard: View {
             // 0:00 → 23:59（整段本地日）
             let date = start.addingTimeInterval(fraction * 86_399)
             let point = CGPoint(x: size.width * CGFloat(fraction),
-                                y: yFor(altitude: altitudeAt(date), horizonY: horizonY))
+                                y: yFor(altitude: altitudeAt(date), horizonY: horizonY, scale: scale))
             if index == 0 {
                 path.move(to: point)
             } else {
@@ -106,25 +128,24 @@ struct SkyPathCard: View {
         return path
     }
 
-    private func yFor(altitude: Double, horizonY: CGFloat) -> CGFloat {
-        // 60° 高度角约等于地平线以上 86% 的可视高度
-        horizonY - CGFloat(altitude) * (horizonY * 0.86 / 60)
+    private func yFor(altitude: Double, horizonY: CGFloat, scale: CGFloat) -> CGFloat {
+        horizonY - CGFloat(altitude) * scale
     }
 
     // MARK: 当前位置标记
 
-    private func markers(size: CGSize, horizonY: CGFloat) -> some View {
+    private func markers(size: CGSize, horizonY: CGFloat, scale: CGFloat) -> some View {
         let fraction = min(1, max(0, now.timeIntervalSince(localDayStart) / 86_399))
         let x = min(size.width - 12, max(12, size.width * CGFloat(fraction)))
 
         return ZStack(alignment: .topLeading) {
             if let moonAltitude = astro.moonAltitude {
                 MoonDisc(size: 16)
-                    .offset(x: x - 8, y: yFor(altitude: moonAltitude, horizonY: horizonY) - 8)
+                    .offset(x: x - 8, y: yFor(altitude: moonAltitude, horizonY: horizonY, scale: scale) - 8)
             }
             if let sunAltitude = astro.sunAltitude {
                 SunDisc(size: 18)
-                    .offset(x: x - 9, y: yFor(altitude: sunAltitude, horizonY: horizonY) - 9)
+                    .offset(x: x - 9, y: yFor(altitude: sunAltitude, horizonY: horizonY, scale: scale) - 9)
             }
         }
         .frame(width: size.width, height: size.height, alignment: .topLeading)
