@@ -18,7 +18,15 @@ final class PopoverRouter: ObservableObject {
     @Published var expanded = false
     /// 浮窗当前显示第几天的详情（nil = 今天）
     @Published var hoveredDay: Int?
+    /// 各逐日横条在面板内的顶部位置，用于把浮窗对齐到悬停的那一条
+    @Published var rowTops: [Int: CGFloat] = [:]
     var onOpenSettings: (() -> Void)?
+
+    /// 浮窗顶部相对主面板顶部的偏移
+    var anchorTop: CGFloat {
+        guard let day = hoveredDay, let top = rowTops[day] else { return 0 }
+        return top
+    }
 
     private var collapseTask: Task<Void, Never>?
 
@@ -116,11 +124,11 @@ final class StatusItemController: NSObject {
             }
             .store(in: &cancellables)
 
-        // 悬停展开时在面板左侧弹出独立浮窗
+        // 悬停展开时在面板左侧弹出独立浮窗；切换悬停日期时只挪位置
         router.$expanded
-            .removeDuplicates()
+            .combineLatest(router.$hoveredDay)
             .receive(on: RunLoop.main)
-            .sink { [weak self] expanded in
+            .sink { [weak self] expanded, _ in
                 self?.updateLeftPanel(expanded: expanded)
             }
             .store(in: &cancellables)
@@ -144,8 +152,14 @@ final class StatusItemController: NSObject {
             return
         }
 
+        if leftPanel.isVisible {
+            leftPanel.reposition(beside: parent, anchorTop: router.anchorTop)
+            return
+        }
+
         leftPanel.show(
             beside: parent,
+            anchorTop: router.anchorTop,
             content: LeftPanelView()
                 .environmentObject(store)
                 .environmentObject(places)

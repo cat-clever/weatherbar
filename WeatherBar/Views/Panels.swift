@@ -43,7 +43,7 @@ struct CurrentHeaderView: View {
     private var content: some View {
         HStack(alignment: .top, spacing: 8) {
             VStack(alignment: .leading, spacing: 6) {
-                Text(Formatters.temperature(snapshot.current.temperature, unit: prefs.temperatureUnit))
+                Text(Formatters.temperature(snapshot.current.temperature, unit: prefs.temperatureUnit, decimals: 1))
                     .font(.system(size: 68, weight: .thin))
                     .monospacedDigit()
                     .foregroundStyle(Theme.textPrimary)
@@ -116,11 +116,14 @@ struct CurrentHeaderView: View {
 
 struct HourlyStripView: View {
     @EnvironmentObject private var prefs: PreferencesStore
+    @EnvironmentObject private var router: PopoverRouter
     let hours: [HourPoint]
     let now: Date
 
+    private let cellWidth: CGFloat = 44
+
     var body: some View {
-        ScrollView(.horizontal) {
+        HorizontalWheelScroll(contentWidth: CGFloat(hours.prefix(24).count) * cellWidth + 4) {
             HStack(spacing: 0) {
                 ForEach(Array(hours.prefix(24).enumerated()), id: \.element.id) { item in
                     let index = item.offset
@@ -146,16 +149,19 @@ struct HourlyStripView: View {
                             .fill(index == 0 ? Theme.accentBlue.opacity(0.6) : Color.clear)
                             .frame(width: 18, height: 3)
                     }
-                    .frame(width: 44)
+                    .frame(width: cellWidth)
                     .contentShape(Rectangle())
                     .help("风速：\(Formatters.wind(hour.windSpeed, unit: prefs.windUnit)) · 湿度：\(hour.humidity)%")
                 }
             }
             .padding(.horizontal, 2)
         }
-        .scrollIndicators(.never)
+        .frame(height: 84)
         .card()
-        .hoverHighlight()
+        .onHover { hovering in
+            // 悬停逐小时横条时不弹左侧浮窗
+            if hovering { router.collapseNow() }
+        }
     }
 
     private func isDay(_ date: Date) -> Bool {
@@ -165,6 +171,14 @@ struct HourlyStripView: View {
 }
 
 // MARK: - 逐日
+
+/// 收集各逐日横条在面板内的顶部位置，供左侧浮窗对齐
+struct RowTopsKey: PreferenceKey {
+    static var defaultValue: [Int: CGFloat] = [:]
+    static func reduce(value: inout [Int: CGFloat], nextValue: () -> [Int: CGFloat]) {
+        value.merge(nextValue()) { _, new in new }
+    }
+}
 
 struct DailyListView: View {
     @EnvironmentObject private var prefs: PreferencesStore
@@ -214,6 +228,14 @@ struct DailyListView: View {
                         .lineLimit(2)
                         .fixedSize(horizontal: false, vertical: true)
                 }
+                .background(
+                    GeometryReader { proxy in
+                        Color.clear.preference(
+                            key: RowTopsKey.self,
+                            value: [index: proxy.frame(in: .named("panel")).minY]
+                        )
+                    }
+                )
                 .card(raised: index == 0)
                 .hoverHighlight()
                 .contentShape(Rectangle())
@@ -480,12 +502,23 @@ struct TrendChartsView: View {
                     .font(.system(size: 12.5, weight: .medium))
                     .foregroundStyle(Theme.textPrimary)
                 Spacer(minLength: 6)
-                Text(metric.label)
-                    .font(.system(size: 11.5))
-                    .foregroundStyle(Theme.textTertiary)
-                Image(systemName: "chevron.down")
-                    .font(.system(size: 8, weight: .semibold))
-                    .foregroundStyle(Theme.textTertiary)
+
+                // 点这里也能切换指标（右键菜单同样可用）
+                Menu {
+                    metricMenu(selection: selection, current: metric)
+                } label: {
+                    HStack(spacing: 4) {
+                        Text(metric.label)
+                            .font(.system(size: 11.5))
+                            .foregroundStyle(Theme.textTertiary)
+                        Image(systemName: "chevron.down")
+                            .font(.system(size: 8, weight: .semibold))
+                            .foregroundStyle(Theme.textTertiary)
+                    }
+                }
+                .menuStyle(.borderlessButton)
+                .menuIndicator(.hidden)
+                .fixedSize()
             }
 
             if data.isEmpty {
@@ -503,15 +536,20 @@ struct TrendChartsView: View {
         .card()
         .hoverHighlight()
         .contextMenu {
-            ForEach(TrendMetric.allCases) { item in
-                Button {
-                    selection.wrappedValue = item
-                } label: {
-                    if item == metric {
-                        Label(item.label, systemImage: "checkmark")
-                    } else {
-                        Text(item.label)
-                    }
+            metricMenu(selection: selection, current: metric)
+        }
+    }
+
+    @ViewBuilder
+    private func metricMenu(selection: Binding<TrendMetric>, current: TrendMetric) -> some View {
+        ForEach(TrendMetric.allCases) { item in
+            Button {
+                selection.wrappedValue = item
+            } label: {
+                if item == current {
+                    Label(item.label, systemImage: "checkmark")
+                } else {
+                    Text(item.label)
                 }
             }
         }

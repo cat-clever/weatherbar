@@ -8,8 +8,18 @@ struct SkyPathCard: View {
     let place: Place
     var now: Date = Date()
 
-    private var dayStart: Date { WallClock.startOfDay(now) }
     private let horizonRatio: CGFloat = 0.60
+
+    private var timeZone: TimeZone { TimeZone(identifier: place.timezone ?? "") ?? .current }
+    private var tzOffset: TimeInterval { TimeInterval(timeZone.secondsFromGMT(for: now)) }
+
+    /// 本地 0 点对应的真实时间（曲线横轴 0:00 → 23:59 按当地时间铺满整张卡）
+    private var localDayStart: Date {
+        WallClock.startOfDay(now.addingTimeInterval(tzOffset)).addingTimeInterval(-tzOffset)
+    }
+
+    /// 与 astro 里的墙钟时间同一坐标系的「现在」
+    private var wallNow: Date { now.addingTimeInterval(tzOffset) }
 
     var body: some View {
         GeometryReader { geo in
@@ -80,9 +90,11 @@ struct SkyPathCard: View {
     private func curve(size: CGSize, horizonY: CGFloat, altitudeAt: (Date) -> Double) -> Path {
         var path = Path()
         let steps = 96
+        let start = localDayStart
         for index in 0...steps {
             let fraction = Double(index) / Double(steps)
-            let date = dayStart.addingTimeInterval(fraction * 86_400)
+            // 0:00 → 23:59（整段本地日）
+            let date = start.addingTimeInterval(fraction * 86_399)
             let point = CGPoint(x: size.width * CGFloat(fraction),
                                 y: yFor(altitude: altitudeAt(date), horizonY: horizonY))
             if index == 0 {
@@ -102,7 +114,7 @@ struct SkyPathCard: View {
     // MARK: 当前位置标记
 
     private func markers(size: CGSize, horizonY: CGFloat) -> some View {
-        let fraction = min(1, max(0, now.timeIntervalSince(dayStart) / 86_400))
+        let fraction = min(1, max(0, now.timeIntervalSince(localDayStart) / 86_399))
         let x = min(size.width - 12, max(12, size.width * CGFloat(fraction)))
 
         return ZStack(alignment: .topLeading) {
@@ -140,7 +152,7 @@ struct SkyPathCard: View {
 
     private func countdown(to date: Date?) -> String {
         guard let date else { return "—" }
-        var delta = date.timeIntervalSince(now)
+        var delta = date.timeIntervalSince(wallNow)
         if delta < 0 { delta += 86_400 }
         let total = Int(delta.rounded())
         return "\(total / 3600)h \((total % 3600) / 60)m"

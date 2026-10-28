@@ -7,7 +7,9 @@ import SwiftUI
 final class LeftPanelController {
     private var panel: NSPanel?
 
-    func show<Content: View>(beside parent: NSWindow, content: Content) {
+    var isVisible: Bool { panel?.isVisible ?? false }
+
+    func show<Content: View>(beside parent: NSWindow, anchorTop: CGFloat, content: Content) {
         let size = NSSize(width: Theme.leftPanelWidth, height: Theme.panelHeight)
 
         if panel == nil {
@@ -39,7 +41,7 @@ final class LeftPanelController {
         let parentFrame = parent.frame
         var origin = NSPoint(
             x: parentFrame.minX - size.width - Theme.leftPanelGap,
-            y: parentFrame.maxY - size.height
+            y: parentFrame.maxY - anchorTop - size.height
         )
 
         // 避免浮窗跑出屏幕
@@ -60,6 +62,23 @@ final class LeftPanelController {
         NSAnimationContext.runAnimationGroup { context in
             context.duration = 0.14
             panel.animator().alphaValue = 1
+        }
+    }
+
+    /// 悬停不同横条时只挪位置，不重建内容
+    func reposition(beside parent: NSWindow, anchorTop: CGFloat) {
+        guard let panel, panel.isVisible else { return }
+        let size = panel.frame.size
+        var origin = NSPoint(
+            x: parent.frame.minX - size.width - Theme.leftPanelGap,
+            y: parent.frame.maxY - anchorTop - size.height
+        )
+        if let visible = (parent.screen ?? NSScreen.main)?.visibleFrame {
+            origin.x = max(visible.minX + 4, origin.x)
+            origin.y = max(visible.minY + 4, min(origin.y, visible.maxY - size.height))
+        }
+        if panel.frame.origin != origin {
+            panel.setFrameOrigin(origin)
         }
     }
 

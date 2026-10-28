@@ -32,7 +32,7 @@ enum Theme {
     static let panelHeight: CGFloat = 640
     /// 悬停时出现在面板左侧的独立浮窗
     static let leftPanelWidth: CGFloat = 320
-    static let leftPanelGap: CGFloat = 8
+    static let leftPanelGap: CGFloat = 0
     static let pagePadding: CGFloat = 10
     static let blockGap: CGFloat = 10
     static let cardRadius: CGFloat = 12

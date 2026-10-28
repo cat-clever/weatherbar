@@ -59,6 +59,10 @@ struct PopoverRootView: View {
             .padding(Theme.pagePadding)
         }
         .scrollIndicators(.never)
+        .coordinateSpace(name: "panel")
+        .onPreferenceChange(RowTopsKey.self) { tops in
+            router.rowTops = tops
+        }
     }
 
     private var placeholder: some View {
