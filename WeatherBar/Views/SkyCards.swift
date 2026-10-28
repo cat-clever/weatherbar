@@ -8,7 +8,7 @@ struct SkyPathCard: View {
     let place: Place
     var now: Date = Date()
 
-    private let horizonRatio: CGFloat = 0.60
+    private let horizonRatio: CGFloat = 0.46
 
     private var timeZone: TimeZone { TimeZone(identifier: place.timezone ?? "") ?? .current }
     private var tzOffset: TimeInterval { TimeInterval(timeZone.secondsFromGMT(for: now)) }
