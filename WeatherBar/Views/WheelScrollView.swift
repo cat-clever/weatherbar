@@ -5,10 +5,12 @@ import SwiftUI
 /// SwiftUI 的 ScrollView(.horizontal) 嵌在竖向 ScrollView 里时收不到鼠标滚轮，这里用 NSScrollView 兜住。
 struct HorizontalWheelScroll<Content: View>: NSViewRepresentable {
     let contentWidth: CGFloat
+    var onHover: ((Bool) -> Void)?
     let content: Content
 
-    init(contentWidth: CGFloat, @ViewBuilder content: () -> Content) {
+    init(contentWidth: CGFloat, onHover: ((Bool) -> Void)? = nil, @ViewBuilder content: () -> Content) {
         self.contentWidth = contentWidth
+        self.onHover = onHover
         self.content = content()
     }
 
@@ -21,6 +23,7 @@ struct HorizontalWheelScroll<Content: View>: NSViewRepresentable {
         scroll.autohidesScrollers = true
         scroll.horizontalScrollElasticity = .allowed
         scroll.verticalScrollElasticity = .none
+        scroll.onHoverChange = onHover
 
         let hosting = NSHostingView(rootView: content)
         hosting.frame = NSRect(x: 0, y: 0, width: contentWidth, height: 80)
@@ -29,6 +32,7 @@ struct HorizontalWheelScroll<Content: View>: NSViewRepresentable {
     }
 
     func updateNSView(_ scroll: WheelScrollView, context: Context) {
+        scroll.onHoverChange = onHover
         guard let hosting = scroll.documentView as? NSHostingView<Content> else { return }
         hosting.rootView = content
         var frame = hosting.frame
@@ -38,6 +42,29 @@ struct HorizontalWheelScroll<Content: View>: NSViewRepresentable {
 }
 
 final class WheelScrollView: NSScrollView {
+    var onHoverChange: ((Bool) -> Void)?
+    private var hoverArea: NSTrackingArea?
+
+    // SwiftUI 的 onHover 套在 NSViewRepresentable 上不触发，这里自己用 tracking area 处理
+    override func updateTrackingAreas() {
+        super.updateTrackingAreas()
+        if let hoverArea { removeTrackingArea(hoverArea) }
+        let area = NSTrackingArea(rect: bounds,
+                                  options: [.mouseEnteredAndExited, .activeAlways],
+                                  owner: self,
+                                  userInfo: nil)
+        addTrackingArea(area)
+        hoverArea = area
+    }
+
+    override func mouseEntered(with event: NSEvent) {
+        onHoverChange?(true)
+    }
+
+    override func mouseExited(with event: NSEvent) {
+        onHoverChange?(false)
+    }
+
     override func layout() {
         super.layout()
         guard let document = documentView else { return }

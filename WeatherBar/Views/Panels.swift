@@ -137,7 +137,20 @@ struct HourlyStripView: View {
     private let cellWidth: CGFloat = 44
 
     var body: some View {
-        HorizontalWheelScroll(contentWidth: CGFloat(hours.prefix(24).count) * cellWidth + 4) {
+        HorizontalWheelScroll(
+            contentWidth: CGFloat(hours.prefix(24).count) * cellWidth + 4,
+            onHover: { hovering in
+                // 悬停逐小时（也是今天的数据）时，浮窗切回今天
+                Task { @MainActor in
+                    if hovering {
+                        router.hoveredDay = nil
+                        router.expand()
+                    } else {
+                        router.scheduleCollapse()
+                    }
+                }
+            }
+        ) {
             HStack(spacing: 0) {
                 ForEach(Array(hours.prefix(24).enumerated()), id: \.element.id) { item in
                     let index = item.offset
@@ -172,13 +185,6 @@ struct HourlyStripView: View {
         }
         .frame(height: 84)
         .card()
-        .onHover { hovering in
-            // 悬停逐小时（也是今天的数据）时，浮窗切回今天
-            if hovering {
-                router.hoveredDay = nil
-                router.expand()
-            }
-        }
     }
 
     private func isDay(_ date: Date) -> Bool {
