@@ -33,6 +33,7 @@ final class WeatherStore: ObservableObject {
     private var refreshTask: Task<Void, Never>?
     private var retryDelay: TimeInterval = 30
     private var lastLocationFix: Date?
+    private var lastLocationFixSucceeded = false
 
     init(prefs: PreferencesStore, places: PlaceStore) {
         self.prefs = prefs
@@ -140,17 +141,21 @@ final class WeatherStore: ObservableObject {
         if let active = places.active, active.isCurrentLocation {
             usingCurrentLocation = true
 
-            // 定位节流：2 小时内不重复请求，失败也标记，避免每次刷新都等超时
-            if let last = lastLocationFix, Date().timeIntervalSince(last) < 7200 {
+            // 定位节流：成功拿到坐标后 2 小时内不重复请求；
+            // 失败则 1 分钟后重试（之前失败也按 2 小时计，导致一直用初始占位坐标）
+            let interval: TimeInterval = lastLocationFixSucceeded ? 7200 : 60
+            if let last = lastLocationFix, Date().timeIntervalSince(last) < interval {
                 return active
             }
             do {
                 let located = try await locator.requestPlace()
                 lastLocationFix = Date()
+                lastLocationFixSucceeded = true
                 places.updateCurrentLocation(located)
                 return places.active ?? located
             } catch {
                 lastLocationFix = Date()
+                lastLocationFixSucceeded = false
                 return active
             }
         }

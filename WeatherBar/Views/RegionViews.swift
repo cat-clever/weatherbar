@@ -59,6 +59,13 @@ struct RegionSwitcherView: View {
         .transition(.opacity.combined(with: .scale(scale: 0.96, anchor: .top)))
     }
 
+    private func coordinateText(for place: Place) -> String {
+        let coords = String(format: "%.4f, %.4f", place.latitude, place.longitude)
+        let isPlaceholder = abs(place.latitude - Place.fallback.latitude) < 0.0001
+            && abs(place.longitude - Place.fallback.longitude) < 0.0001
+        return isPlaceholder ? "\(coords) · 未取到定位" : coords
+    }
+
     private func row(place: Place) -> some View {
         HStack(spacing: 8) {
             Rectangle()
@@ -76,7 +83,13 @@ struct RegionSwitcherView: View {
                     .font(.system(size: 13.5, weight: .semibold))
                     .foregroundStyle(Theme.textPrimary)
                     .lineLimit(1)
-                if !place.subtitle.isEmpty {
+                if place.isCurrentLocation {
+                    Text(coordinateText(for: place))
+                        .font(.system(size: 10.5))
+                        .monospacedDigit()
+                        .foregroundStyle(Theme.textTertiary)
+                        .lineLimit(1)
+                } else if !place.subtitle.isEmpty {
                     Text(place.subtitle)
                         .font(.system(size: 10.5))
                         .foregroundStyle(Theme.textTertiary)
