@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 WeatherBar contributors
+
 import Foundation
 
 // MARK: - 天文计算（太阳 / 月亮 / 月相）

@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 WeatherBar contributors
+
 import Foundation
 
 // MARK: - Open-Meteo（默认源，无需 Key）

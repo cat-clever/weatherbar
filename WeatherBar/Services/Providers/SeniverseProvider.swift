@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 WeatherBar contributors
+
 import Foundation
 
 // MARK: - 心知天气 Seniverse

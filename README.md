@@ -109,3 +109,12 @@ WeatherBar/
 - **不得通过 App Store 分发** —— GPLv3 与 App Store 的 DRM/再分发限制不兼容。本项目仅通过 GitHub Releases 分发。
 
 第三方天气数据版权归各提供商所有，使用时须遵守其条款与署名要求（面板底部已展示当前数据来源）。
+
+每个源文件头部带有 SPDX 标识：
+
+```swift
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 WeatherBar contributors
+```
+
+应用内「设置 → 开源许可」也能直接看许可全文与源码地址。

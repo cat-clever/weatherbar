@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 WeatherBar contributors
+
 import SwiftUI
 import AppKit
 
@@ -59,6 +62,22 @@ struct GeneralSettingsView: View {
             }
 
             Toggle("开机启动", isOn: $prefs.launchAtLogin)
+
+            Section("开源许可") {
+                HStack(spacing: 6) {
+                    Text("GPL-3.0-or-later")
+                        .font(.system(size: 13, weight: .medium))
+                    Spacer(minLength: 8)
+                    Button("查看许可全文") {
+                        NSWorkspace.shared.open(URL(string: "https://github.com/cat-clever/weatherbar/blob/main/LICENSE")!)
+                    }
+                    .controlSize(.small)
+                    Button("源代码") {
+                        NSWorkspace.shared.open(URL(string: "https://github.com/cat-clever/weatherbar")!)
+                    }
+                    .controlSize(.small)
+                }
+            }
 
             Section("软件更新") {
                 HStack(alignment: .center, spacing: 8) {

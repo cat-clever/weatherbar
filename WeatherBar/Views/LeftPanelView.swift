@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 WeatherBar contributors
+
 import SwiftUI
 
 /// 左侧独立浮窗：显示「鼠标悬停的那一天」的详情。

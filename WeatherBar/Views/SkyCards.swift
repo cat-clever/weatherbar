@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 WeatherBar contributors
+
 import SwiftUI
 
 // MARK: - 左栏：天空轨迹 / 月相 / 太阳 / 降水
