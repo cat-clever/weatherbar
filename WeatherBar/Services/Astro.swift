@@ -192,11 +192,13 @@ struct AstroCalculator {
         let eps = eps0 + 0.00256 * cos(omega * rad)
         let decl = asin(sin(eps * rad) * sin(lambda * rad)) / rad
         let y = pow(tan(eps * rad / 2), 2)
-        let eqTime = 4 * (y * sin(2 * l0 * rad)
-                          - 2 * e * sin(m * rad)
-                          + 4 * e * y * sin(m * rad) * cos(2 * l0 * rad)
-                          - 0.5 * y * y * sin(4 * l0 * rad)
-                          - 1.25 * e * e * sin(2 * m * rad))
+        // 注意：方括号里是弧度，换算成分钟要先转角度再 ×4（1° = 4 分钟）
+        let eqTimeRad = y * sin(2 * l0 * rad)
+            - 2 * e * sin(m * rad)
+            + 4 * e * y * sin(m * rad) * cos(2 * l0 * rad)
+            - 0.5 * y * y * sin(4 * l0 * rad)
+            - 1.25 * e * e * sin(2 * m * rad)
+        let eqTime = 4 * eqTimeRad * (180 / Double.pi)
         return (decl, eqTime)
     }
 
