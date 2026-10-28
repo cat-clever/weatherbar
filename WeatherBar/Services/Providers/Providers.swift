@@ -56,7 +56,7 @@ enum ProviderID: String, Codable, CaseIterable, Identifiable, Sendable {
 
     var isImplemented: Bool {
         switch self {
-        case .auto, .openMeteo, .weatherKit, .qweather, .seniverse, .amap: return true
+        case .auto, .openMeteo, .weatherKit, .qweather, .seniverse, .amap, .metNorway: return true
         default: return false
         }
     }
@@ -199,8 +199,8 @@ final class ProviderRegistry: @unchecked Sendable {
     private func fallbackOrder(for place: Place, excluding: ProviderID?) -> [ProviderID] {
         let inChina = GeoFence.isMainlandChina(place.latitude, place.longitude)
         let base: [ProviderID] = inChina
-            ? [.qweather, .seniverse, .amap, .weatherKit, .openMeteo]
-            : [.weatherKit, .openMeteo]
+            ? [.qweather, .seniverse, .amap, .weatherKit, .openMeteo, .metNorway]
+            : [.weatherKit, .openMeteo, .metNorway]
         return base.filter { $0 != excluding }
     }
 
@@ -211,5 +211,6 @@ final class ProviderRegistry: @unchecked Sendable {
         registry.register(WeatherKitProvider())
         registry.register(SeniverseProvider())
         registry.register(AMapProvider())
+        registry.register(MetNoProvider())
     }
 }

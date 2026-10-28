@@ -280,7 +280,7 @@ struct ProviderSettingsView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 12) {
                 Picker("提供商", selection: $prefs.providerPreference) {
-                    ForEach(ProviderID.allCases) { provider in
+                    ForEach(ProviderID.allCases.filter(\.isImplemented)) { provider in
                         Text(provider.displayName).tag(provider)
                     }
                 }
@@ -288,7 +288,7 @@ struct ProviderSettingsView: View {
                     Task { await store.refresh(force: true) }
                 }
 
-                Text("自动模式：中国大陆优先和风/心知/高德，海外优先 Apple Weather，全部失败时回落到 Open-Meteo。")
+                Text("自动模式：中国大陆优先和风/心知/高德，海外优先 Apple Weather；全部失败时回落到 Open-Meteo，再不行用 MET Norway（免注册）。")
                     .font(.system(size: 11))
                     .foregroundStyle(.secondary)
 
