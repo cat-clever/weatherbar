@@ -18,37 +18,70 @@ enum KeychainKey: String, CaseIterable {
 final class KeychainStore: @unchecked Sendable {
     static let shared = KeychainStore()
     private let lock = NSLock()
+    private var cache: [String: String]?
 
     // 说明：早期版本把 Key 存进系统钥匙串，但同时又往 UserDefaults 写了一份 fallback，
-    // 等于钥匙串并没有提供额外保护。而本应用是未签名分发，每次更新二进制指纹都会变，
-    // macOS 就认为「不是同一个 App」而反复弹「请输入登录钥匙串密码」。
-    // 现在统一改用 App 沙盒容器内的偏好存储（文件权限由沙盒隔离），不再访问钥匙串。
+    // 钥匙串并没带来额外保护；而未签名分发的应用每次更新二进制指纹都变，
+    // macOS 会反复弹「请输入登录钥匙串密码」。
+    // 现在改为存到应用支持目录下的独立配置文件 secrets.json（权限 0600）。
 
-    private func storageKey(_ key: KeychainKey) -> String { "secret." + key.rawValue }
-    private func legacyKey(_ key: KeychainKey) -> String { "fallback." + key.rawValue }
+    private var fileURL: URL {
+        let base = FileManager.default.urls(for: .applicationSupportDirectory,
+                                            in: .userDomainMask).first
+            ?? URL(fileURLWithPath: NSTemporaryDirectory())
+        let dir = base.appendingPathComponent("WeatherBar", isDirectory: true)
+        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        return dir.appendingPathComponent("secrets.json")
+    }
+
+    private func load() -> [String: String] {
+        if let cache { return cache }
+        var values: [String: String] = [:]
+        if let data = try? Data(contentsOf: fileURL),
+           let decoded = try? JSONDecoder().decode([String: String].self, from: data) {
+            values = decoded
+        }
+        // 迁移：旧版本写在 UserDefaults 里的 secret.* / fallback.*
+        let defaults = UserDefaults.standard
+        var migrated = false
+        for key in KeychainKey.allCases {
+            let name = key.rawValue
+            if values[name] == nil {
+                if let old = defaults.string(forKey: "secret." + name) ?? defaults.string(forKey: "fallback." + name),
+                   !old.isEmpty {
+                    values[name] = old
+                    migrated = true
+                }
+            }
+            defaults.removeObject(forKey: "secret." + name)
+            defaults.removeObject(forKey: "fallback." + name)
+        }
+        cache = values
+        if migrated { persist(values) }
+        return values
+    }
+
+    private func persist(_ values: [String: String]) {
+        guard let data = try? JSONEncoder().encode(values) else { return }
+        try? data.write(to: fileURL, options: .atomic)
+        try? FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: fileURL.path)
+    }
 
     func string(for key: KeychainKey) -> String? {
         lock.lock(); defer { lock.unlock() }
-        let defaults = UserDefaults.standard
-        if let value = defaults.string(forKey: storageKey(key)), !value.isEmpty { return value }
-        // 迁移旧版本写在 fallback.* 里的值
-        if let legacy = defaults.string(forKey: legacyKey(key)), !legacy.isEmpty {
-            defaults.set(legacy, forKey: storageKey(key))
-            defaults.removeObject(forKey: legacyKey(key))
-            return legacy
-        }
-        return nil
+        return load()[key.rawValue]
     }
 
     func set(_ value: String?, for key: KeychainKey) {
         lock.lock(); defer { lock.unlock() }
-        let defaults = UserDefaults.standard
+        var values = load()
         if let value, !value.isEmpty {
-            defaults.set(value, forKey: storageKey(key))
+            values[key.rawValue] = value
         } else {
-            defaults.removeObject(forKey: storageKey(key))
+            values.removeValue(forKey: key.rawValue)
         }
-        defaults.removeObject(forKey: legacyKey(key))
+        cache = values
+        persist(values)
     }
 
     func hasValue(for key: KeychainKey) -> Bool {

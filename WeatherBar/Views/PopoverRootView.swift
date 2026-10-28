@@ -110,6 +110,12 @@ struct PopoverRootView: View {
             Text("数据来源：\(snapshot.servedBy.attribution)")
                 .font(.system(size: 10))
                 .foregroundStyle(Theme.textTertiary.opacity(0.8))
+
+            if prefs.providerPreference != .auto, snapshot.servedBy != prefs.providerPreference {
+                Text("\(prefs.providerPreference.displayName) 请求失败，已回退到 \(snapshot.servedBy.displayName)")
+                    .font(.system(size: 10))
+                    .foregroundStyle(Theme.accentSun.opacity(0.9))
+            }
         }
         .frame(maxWidth: .infinity)
         .padding(.vertical, 6)
