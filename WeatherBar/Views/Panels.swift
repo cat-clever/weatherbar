@@ -130,26 +130,17 @@ struct CurrentHeaderView: View {
 
 struct HourlyStripView: View {
     @EnvironmentObject private var prefs: PreferencesStore
-    @EnvironmentObject private var router: PopoverRouter
     let hours: [HourPoint]
     let now: Date
+    /// 悬停回调；主面板里传 nil（悬停不弹任何浮窗），浮窗里传保持展开的闭包
+    var onHover: ((Bool) -> Void)? = nil
 
     private let cellWidth: CGFloat = 44
 
     var body: some View {
         HorizontalWheelScroll(
             contentWidth: CGFloat(hours.prefix(24).count) * cellWidth + 4,
-            onHover: { hovering in
-                // 悬停逐小时（也是今天的数据）时，浮窗切回今天
-                Task { @MainActor in
-                    if hovering {
-                        router.hoveredDay = nil
-                        router.expand()
-                    } else {
-                        router.scheduleCollapse()
-                    }
-                }
-            }
+            onHover: onHover
         ) {
             HStack(spacing: 0) {
                 ForEach(Array(hours.prefix(24).enumerated()), id: \.element.id) { item in
@@ -184,14 +175,6 @@ struct HourlyStripView: View {
             .padding(.horizontal, 2)
         }
         .frame(height: 84)
-        .background(
-            GeometryReader { proxy in
-                Color.clear.preference(
-                    key: CardFramesKey.self,
-                    value: [-2: proxy.frame(in: .named("panel"))]
-                )
-            }
-        )
         .card()
     }
 

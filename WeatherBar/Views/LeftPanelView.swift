@@ -62,7 +62,12 @@ struct LeftPanelView: View {
                         .padding(.vertical, 20)
                 } else if !showLiveCards {
                     // 悬停主面板时主面板已经有今天的逐小时，这里不重复
-                    HourlyStripView(hours: hours, now: Date())
+                    HourlyStripView(hours: hours, now: Date()) { hovering in
+                        // 浮窗里的逐小时属于浮窗整体，只负责别让它消失
+                        if hovering {
+                            router.expand()
+                        }
+                    }
                 }
 
                 SunMoonPanel(astro: astro)
