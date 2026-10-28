@@ -46,6 +46,12 @@ final class WheelScrollView: NSScrollView {
     private var hoverArea: NSTrackingArea?
 
     // SwiftUI 的 onHover 套在 NSViewRepresentable 上不触发，这里自己用 tracking area 处理
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        // 视图刚挂到窗口时 AppKit 不一定会调 updateTrackingAreas，这里显式装一次
+        updateTrackingAreas()
+    }
+
     override func updateTrackingAreas() {
         super.updateTrackingAreas()
         if let hoverArea { removeTrackingArea(hoverArea) }

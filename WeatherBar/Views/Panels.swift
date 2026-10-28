@@ -184,6 +184,14 @@ struct HourlyStripView: View {
             .padding(.horizontal, 2)
         }
         .frame(height: 84)
+        .background(
+            GeometryReader { proxy in
+                Color.clear.preference(
+                    key: CardFramesKey.self,
+                    value: [-2: proxy.frame(in: .named("panel"))]
+                )
+            }
+        )
         .card()
     }
 

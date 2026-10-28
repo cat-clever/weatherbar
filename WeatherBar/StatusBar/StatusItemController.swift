@@ -78,6 +78,7 @@ final class StatusItemController: NSObject {
     private let leftPanel = LeftPanelController()
     private var cancellables = Set<AnyCancellable>()
     private var closeObserver: NSObjectProtocol?
+    private var moveMonitor: Any?
 
     var onShowOnboarding: (() -> Void)?
     var onCheckForUpdates: (() -> Void)?
@@ -150,7 +151,45 @@ final class StatusItemController: NSObject {
             Task { @MainActor in
                 self?.leftPanel.hide()
                 self?.router.collapseNow()
+                self?.stopMoveMonitor()
             }
+        }
+    }
+
+    // MARK: - 鼠标移动监听（兜底：原生滚动视图里的 hover 事件收不到）
+
+    private func startMoveMonitor() {
+        guard moveMonitor == nil else { return }
+        popover.contentViewController?.view.window?.acceptsMouseMovedEvents = true
+        moveMonitor = NSEvent.addLocalMonitorForEvents(matching: [.mouseMoved]) { [weak self] event in
+            Task { @MainActor in self?.handleMouseMoved() }
+            return event
+        }
+    }
+
+    private func stopMoveMonitor() {
+        if let moveMonitor {
+            NSEvent.removeMonitor(moveMonitor)
+            self.moveMonitor = nil
+        }
+    }
+
+    /// 鼠标落在逐小时卡片（index -2）上时，浮窗切回今天并保持显示
+    private func handleMouseMoved() {
+        guard popover.isShown,
+              let window = popover.contentViewController?.view.window,
+              let contentRect = mainPanelScreenRect(in: window),
+              let frame = router.cardFrames[-2] else { return }
+
+        let rect = NSRect(x: contentRect.minX + frame.minX,
+                          y: contentRect.maxY - frame.maxY,
+                          width: frame.width,
+                          height: frame.height)
+        guard rect.contains(NSEvent.mouseLocation) else { return }
+
+        if router.hoveredDay != nil || !router.expanded {
+            router.hoveredDay = nil
+            router.expand()
         }
     }
 
@@ -294,6 +333,7 @@ final class StatusItemController: NSObject {
         disableScrollIndicators(in: controller.view)
         popover.show(relativeTo: button.bounds, of: button, preferredEdge: .minY)
         NSApp.activate(ignoringOtherApps: true)
+        startMoveMonitor()
     }
 
     private func showMenu() {
