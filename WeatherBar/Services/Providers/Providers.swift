@@ -13,6 +13,7 @@ enum ProviderID: String, Codable, CaseIterable, Identifiable, Sendable {
     case openWeather
     case metNorway
     case sevenTimer
+    case msn
 
     var id: String { rawValue }
 
@@ -28,6 +29,7 @@ enum ProviderID: String, Codable, CaseIterable, Identifiable, Sendable {
         case .openWeather: return "OpenWeather"
         case .metNorway: return "MET Norway"
         case .sevenTimer: return "7Timer!"
+        case .msn: return "微软天气（MSN）"
         }
     }
 
@@ -43,20 +45,21 @@ enum ProviderID: String, Codable, CaseIterable, Identifiable, Sendable {
         case .openWeather: return "OpenWeather"
         case .metNorway: return "MET Norway"
         case .sevenTimer: return "7Timer! · CMA"
+        case .msn: return "MSN Weather · 中国天气网"
         }
     }
 
     /// 需要 Key 才能用
     var requiresKey: Bool {
         switch self {
-        case .auto, .openMeteo, .metNorway, .sevenTimer: return false
+        case .auto, .openMeteo, .metNorway, .sevenTimer, .msn: return false
         default: return true
         }
     }
 
     var isImplemented: Bool {
         switch self {
-        case .auto, .openMeteo, .weatherKit, .qweather, .seniverse, .amap, .metNorway: return true
+        case .auto, .openMeteo, .weatherKit, .qweather, .seniverse, .amap, .metNorway, .msn: return true
         default: return false
         }
     }
@@ -212,5 +215,6 @@ final class ProviderRegistry: @unchecked Sendable {
         registry.register(SeniverseProvider())
         registry.register(AMapProvider())
         registry.register(MetNoProvider())
+        registry.register(MsnWeatherProvider())
     }
 }
