@@ -178,6 +178,7 @@ final class MsnWeatherProvider: WeatherProvider {
         let precip: Double?
         let cloudCover: Double?
         let icon: Int?
+        let symbol: String?
     }
 
     private struct Daily: Decodable {
@@ -188,6 +189,7 @@ final class MsnWeatherProvider: WeatherProvider {
         let windMax: Double?
         let uv: Double?
         let icon: Int?
+        let symbol: String?
     }
 
     // MARK: 映射
@@ -209,7 +211,7 @@ final class MsnWeatherProvider: WeatherProvider {
             hourly.append(HourPoint(
                 date: date,
                 temperature: hour.temp ?? 0,
-                code: Self.code(icon: hour.icon),
+                code: Self.code(symbol: hour.symbol, icon: hour.icon),
                 // 逐小时只给降水量（mm），降雨概率按降水量估算
                 precipitationChance: (hour.precip ?? 0) > 0 ? min(90, 40 + Int((hour.precip ?? 0) * 20)) : 0,
                 windSpeed: hour.windSpd ?? 0,
@@ -228,7 +230,7 @@ final class MsnWeatherProvider: WeatherProvider {
             guard let info = day.daily, let date = wall(info.valid) else { continue }
             daily.append(DayPoint(
                 date: WallClock.startOfDay(date),
-                code: Self.code(icon: info.icon),
+                code: Self.code(symbol: info.symbol, icon: info.icon),
                 minTemperature: info.tempLo ?? 0,
                 maxTemperature: info.tempHi ?? 0,
                 precipitationChance: Int((info.precip ?? 0).rounded()),
@@ -259,8 +261,8 @@ final class MsnWeatherProvider: WeatherProvider {
             windGust: rawHours.first?.windGust ?? currentHour.windSpeed,
             cloudCover: currentHour.cloudCover ?? 0,
             precipitation: currentHour.precipitation ?? 0,
-            isDay: weather.current?.symbol?.hasPrefix("d") ?? (WallClock.hour(of: currentHour.date) >= 6 && WallClock.hour(of: currentHour.date) < 18),
-            code: Self.code(icon: weather.current?.icon ?? 3)
+            isDay: Self.isDay(symbol: weather.current?.symbol, date: currentHour.date),
+            code: Self.code(symbol: weather.current?.symbol, icon: weather.current?.icon)
         )
 
         return ProviderPayload(
@@ -278,22 +280,91 @@ final class MsnWeatherProvider: WeatherProvider {
         return now.addingTimeInterval(TimeInterval(timeZone.secondsFromGMT(for: now)))
     }
 
-    /// MSN 用的是一套 AccuWeather 风格的图标编号
-    private static func code(icon: Int?) -> WeatherCode {
+    static func isDay(symbol: String?, date: Date) -> Bool {
+        if let first = symbol?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased().first {
+            if first == "d" { return true }
+            if first == "n" { return false }
+        }
+        let hour = WallClock.hour(of: date)
+        return hour >= 6 && hour < 18
+    }
+
+    /// 优先使用 Foreca 4~5 位 `symbol`（如 d410/n310），缺失或未知时回退到 MSN 数字 `icon`
+    static func code(symbol: String?, icon: Int?) -> WeatherCode {
+        if let symbol, let mapped = code(fromSymbol: symbol) {
+            return mapped
+        }
+        return code(icon: icon)
+    }
+
+    static func code(fromSymbol raw: String) -> WeatherCode? {
+        let s = raw.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        guard s.count >= 4, let first = s.first, first == "d" || first == "n" else {
+            return nil
+        }
+        let start = s.index(after: s.startIndex)
+        let end = s.index(start, offsetBy: 3)
+        let key = String(s[start..<end])
+        switch key {
+        case "000": return .clear
+        case "100": return .mainlyClear
+        case "200", "300", "500": return .partlyCloudy
+        case "400": return .overcast
+        case "600", "900", "907": return .fog
+        case "603": return .freezingRainLight
+        case "605": return .freezingRainHeavy
+        case "705", "905": return .thunderstormHail
+
+        case "010", "110", "210", "310", "020", "120", "220": return .rainShowersLight
+        case "320": return .rainShowersModerate
+        case "030", "130", "410": return .rainLight
+        case "230", "330", "420": return .rainModerate
+        case "430": return .rainHeavy
+
+        case "011", "111", "211", "311", "411",
+             "021", "121", "221", "321", "421",
+             "031", "131", "231", "331", "431":
+            return .freezingRainLight
+
+        case "012", "112", "212", "312": return .snowShowersLight
+        case "022", "122", "222", "322": return .snowShowersHeavy
+        case "032", "132", "412": return .snowLight
+        case "232", "332", "422": return .snowModerate
+        case "432": return .snowHeavy
+
+        case "040", "140", "240", "340", "440": return .thunderstorm
+        case "041", "141", "241", "341", "441",
+             "042", "142", "242", "342", "442":
+            return .thunderstormHail
+
+        default: return nil
+        }
+    }
+
+    /// MSN 内部 skyCode 图标编号兜底表（非 AccuWeather 编号）
+    static func code(icon: Int?) -> WeatherCode {
         switch icon ?? 3 {
-        case 1, 30, 31, 33: return .clear
-        case 2, 5, 34: return .mainlyClear
-        case 3, 4, 35, 36, 37: return .partlyCloudy
-        case 6, 7, 8, 32, 38: return .overcast
-        case 11: return .fog
-        case 12, 14, 39: return .rainShowersLight
-        case 13, 40: return .rainShowersModerate
-        case 15, 16, 17, 41, 42: return .thunderstorm
-        case 18: return .rainModerate
-        case 19, 20, 21, 43: return .snowLight
-        case 22, 23, 44: return .snowModerate
-        case 24, 25, 29: return .freezingRainLight
-        case 26: return .freezingRainHeavy
+        case 1, 28, 101, 102: return .clear
+        case 2, 29: return .mainlyClear
+        case 3, 4, 30, 31, 39: return .partlyCloudy
+        case 5, 32, 59, 91, 92: return .overcast
+        case 9, 12, 18, 21, 36, 45, 48, 54, 55, 57, 58, 63, 64, 89, 90: return .fog
+        case 8, 19, 35, 46: return .rainLight
+        case 17, 44: return .rainShowersLight
+        case 50, 79, 80: return .rainShowersModerate
+        case 13, 23, 40: return .rainModerate
+        case 14, 22, 41, 49: return .rainHeavy
+        case 10, 11, 37, 38, 69, 70, 71, 72,
+             24, 51, 75, 76, 77, 78, 83, 84, 85, 86:
+            return .freezingRainLight
+        case 16, 43: return .freezingRainHeavy
+        case 20, 47: return .snowLight
+        case 26, 81, 82: return .snowShowersLight
+        case 7, 25, 34, 52, 53, 60: return .snowModerate
+        case 15, 42: return .snowHeavy
+        case 27, 56, 67, 68: return .thunderstorm
+        case 6, 33, 61, 62, 65, 66, 73, 74, 87, 88, 93, 94, 95, 96:
+            return .thunderstormHail
         default: return .partlyCloudy
         }
     }

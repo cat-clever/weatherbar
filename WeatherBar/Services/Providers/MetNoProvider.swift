@@ -248,7 +248,7 @@ final class MetNoProvider: WeatherProvider {
     }
 
     /// MET 的 symbol_code → WMO 天气代码
-    private static func code(from symbol: String) -> WeatherCode {
+    static func code(from symbol: String) -> WeatherCode {
         let base = symbol
             .replacingOccurrences(of: "_day", with: "")
             .replacingOccurrences(of: "_night", with: "")
@@ -266,15 +266,21 @@ final class MetNoProvider: WeatherProvider {
         case "lightrainshowers": return .rainShowersLight
         case "rainshowers": return .rainShowersModerate
         case "heavyrainshowers": return .rainShowersViolent
-        case "lightsleet", "sleet": return .freezingRainLight
-        case "heavysleet": return .freezingRainHeavy
+        case "lightsleet", "sleet", "lightsleetshowers", "sleetshowers": return .freezingRainLight
+        case "heavysleet", "heavysleetshowers": return .freezingRainHeavy
         case "lightsnow": return .snowLight
         case "snow": return .snowModerate
         case "heavysnow": return .snowHeavy
         case "lightsnowshowers", "snowshowers": return .snowShowersLight
         case "heavysnowshowers": return .snowShowersHeavy
-        case "rainandthunder", "heavyrainandthunder": return .thunderstorm
-        case "sleetandthunder", "snowandthunder": return .thunderstormHail
+        case "lightrainandthunder", "rainandthunder", "heavyrainandthunder",
+             "lightrainshowersandthunder", "rainshowersandthunder", "heavyrainshowersandthunder":
+            return .thunderstorm
+        case "lightsleetandthunder", "sleetandthunder", "heavysleetandthunder",
+             "lightssleetshowersandthunder", "sleetshowersandthunder", "heavysleetshowersandthunder",
+             "lightsnowandthunder", "snowandthunder", "heavysnowandthunder",
+             "lightssnowshowersandthunder", "snowshowersandthunder", "heavysnowshowersandthunder":
+            return .thunderstormHail
         default: return .partlyCloudy
         }
     }
