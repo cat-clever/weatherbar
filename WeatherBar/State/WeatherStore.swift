@@ -34,6 +34,8 @@ final class WeatherStore: ObservableObject {
     private let cache = SnapshotCache()
     private let astro = AstroCalculator()
     private var refreshTask: Task<Void, Never>?
+    private var retryTask: Task<Void, Never>?
+    private var refreshGeneration: UInt64 = 0
     private var retryDelay: TimeInterval = 30
     private var lastLocationFix: Date?
     private var lastLocationFixSucceeded = false
@@ -47,7 +49,16 @@ final class WeatherStore: ObservableObject {
     // MARK: - 生命周期
 
     func bootstrap() async {
-        if let cached = cache.loadLast() {
+        let preferred = prefs.providerPreference == .auto ? nil : prefs.providerPreference
+        let initialCache: WeatherSnapshot?
+        if let active = places.active {
+            initialCache = cache.loadLatest(forPlaceID: active.id,
+                                            preferredProvider: preferred)
+                ?? cache.loadLast()
+        } else {
+            initialCache = cache.loadLast()
+        }
+        if let cached = initialCache {
             snapshot = cached
             servedBy = cached.servedBy
             applyDisplay(cached, stale: true)
@@ -57,10 +68,28 @@ final class WeatherStore: ObservableObject {
     }
 
     func refresh(force: Bool = false) async {
-        refreshTask?.cancel()
+        if !force, let existing = refreshTask {
+            await existing.value
+            return
+        }
+        if case .loading = phase, !force { return }
+
+        if force {
+            retryTask?.cancel()
+            retryTask = nil
+            refreshTask?.cancel()
+        }
+
+        refreshGeneration &+= 1
+        let gen = refreshGeneration
         let task = Task<Void, Never> { [weak self] in
             guard let self else { return }
-            await self.performRefresh(force: force)
+            defer {
+                if self.refreshGeneration == gen {
+                    self.refreshTask = nil
+                }
+            }
+            await self.performRefresh(force: force, generation: gen)
         }
         refreshTask = task
         await task.value
@@ -68,22 +97,29 @@ final class WeatherStore: ObservableObject {
 
     // MARK: - 核心刷新
 
-    private func performRefresh(force: Bool) async {
+    private func performRefresh(force: Bool, generation gen: UInt64) async {
         if case .loading = phase, !force { return }
         phase = .loading
 
-        let place = await resolvePlace()
+        let place = await resolvePlace(forceLocation: force)
+        guard !Task.isCancelled, refreshGeneration == gen else { return }
         guard let place else {
             phase = .failed("没有可用地区")
             return
         }
 
-        // 切换地区时先用该地区缓存顶上
-        if snapshot?.place.id != place.id,
-           let cached = cache.loadLast(),
-           cached.place.id == place.id {
-            snapshot = cached
-            applyDisplay(cached, stale: true)
+        // 切换地区时先用该地区缓存顶上，无缓存则清空旧地区快照
+        if snapshot?.place.id != place.id {
+            let preferred = prefs.providerPreference == .auto ? nil : prefs.providerPreference
+            if let cached = cache.loadLatest(forPlaceID: place.id,
+                                             preferredProvider: preferred) {
+                snapshot = cached
+                servedBy = cached.servedBy
+                applyDisplay(cached, stale: true)
+            } else {
+                snapshot = nil
+                displayState = DisplayState()
+            }
         }
 
         let chain = ProviderRegistry.shared.chain(for: place, preference: prefs.providerPreference)
@@ -95,10 +131,12 @@ final class WeatherStore: ObservableObject {
 
         var lastFailure: Error?
         for provider in chain {
+            if Task.isCancelled || refreshGeneration != gen { return }
             do {
                 let payload = try await provider.fetch(place: place, hours: 24, days: 7)
+                if Task.isCancelled || refreshGeneration != gen { return }
                 CircuitBreaker.shared.recordSuccess(provider.id)
-                let info = astro.compute(for: Date(), place: place)
+                let info = astro.compute(for: Date(), place: place, timezoneIdentifier: payload.timezone)
                 let snap = WeatherSnapshot(
                     place: place,
                     fetchedAt: Date(),
@@ -117,37 +155,48 @@ final class WeatherStore: ObservableObject {
                 phase = .loaded
                 lastError = nil
                 retryDelay = 30
+                retryTask?.cancel()
+                retryTask = nil
+                return
+            } catch is CancellationError {
+                return
+            } catch let urlError as URLError where urlError.code == .cancelled {
                 return
             } catch {
+                if Task.isCancelled || refreshGeneration != gen { return }
                 CircuitBreaker.shared.recordFailure(provider.id)
                 lastFailure = error
             }
         }
 
+        guard !Task.isCancelled, refreshGeneration == gen else { return }
         phase = .failed(lastFailure?.localizedDescription ?? "获取天气失败")
         lastError = lastFailure?.localizedDescription
-        scheduleRetry()
+        scheduleRetry(generation: gen)
     }
 
-    private func scheduleRetry() {
+    private func scheduleRetry(generation gen: UInt64) {
+        retryTask?.cancel()
         retryDelay = min(retryDelay * 2, 600)
         let delay = retryDelay
-        Task { [weak self] in
+        retryTask = Task { [weak self] in
             try? await Task.sleep(nanoseconds: UInt64(delay * 1_000_000_000))
-            await self?.refresh(force: true)
+            guard !Task.isCancelled, let self, self.refreshGeneration == gen else { return }
+            await self.refresh(force: true)
         }
     }
 
     // MARK: - 地区解析
 
-    private func resolvePlace() async -> Place? {
+    private func resolvePlace(forceLocation: Bool) async -> Place? {
         if let active = places.active, active.isCurrentLocation {
             usingCurrentLocation = true
 
             // 定位节流：成功拿到坐标后 2 小时内不重复请求；
-            // 失败则 1 分钟后重试（之前失败也按 2 小时计，导致一直用初始占位坐标）
+            // 失败则 1 分钟后重试，显式强制刷新时立即重试
             let interval: TimeInterval = lastLocationFixSucceeded ? 7200 : 60
-            if let last = lastLocationFix, Date().timeIntervalSince(last) < interval {
+            let canThrottle = !(forceLocation && !lastLocationFixSucceeded)
+            if canThrottle, let last = lastLocationFix, Date().timeIntervalSince(last) < interval {
                 return active
             }
             do {
@@ -164,6 +213,11 @@ final class WeatherStore: ObservableObject {
         }
         usingCurrentLocation = false
         return places.active ?? Place.fallback
+    }
+
+    func markCurrentLocationUpdated() {
+        lastLocationFix = Date()
+        lastLocationFixSucceeded = true
     }
 
     // MARK: - 展示状态

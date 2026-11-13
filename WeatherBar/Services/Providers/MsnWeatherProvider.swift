@@ -17,6 +17,7 @@ final class MsnWeatherProvider: WeatherProvider {
     let attribution = ProviderID.msn.attribution
 
     private let session: URLSession
+    private let keyLock = NSLock()
     private var keyCache: String?
     private let keyDefaultsKey = "msn.weatherAccess"
 
@@ -42,8 +43,7 @@ final class MsnWeatherProvider: WeatherProvider {
 
         if data == nil {
             // 密钥失效：清掉缓存重取一次
-            keyCache = nil
-            UserDefaults.standard.removeObject(forKey: keyDefaultsKey)
+            clearCachedKey()
             key = try await apiKey()
             data = try await overviewData(place: place, key: key)
         }
@@ -58,19 +58,40 @@ final class MsnWeatherProvider: WeatherProvider {
             throw ProviderError.decoding(String(describing: error))
         }
 
-        guard let weather = envelope.value.first?.responses.first?.weather.first else {
+        guard let response = envelope.value.first?.responses.first,
+              let weather = response.weather.first else {
             throw ProviderError.decoding("MSN 返回为空")
         }
-        return try makePayload(weather, place: place, days: days)
+        return try makePayload(weather, source: response.source, place: place, days: days)
     }
 
     // MARK: 密钥
 
-    private func apiKey() async throws -> String {
+    private func readCachedKey() -> String? {
+        keyLock.lock(); defer { keyLock.unlock() }
         if let keyCache { return keyCache }
         if let saved = UserDefaults.standard.string(forKey: keyDefaultsKey), !saved.isEmpty {
             keyCache = saved
             return saved
+        }
+        return nil
+    }
+
+    private func storeCachedKey(_ key: String) {
+        keyLock.lock(); defer { keyLock.unlock() }
+        keyCache = key
+        UserDefaults.standard.set(key, forKey: keyDefaultsKey)
+    }
+
+    private func clearCachedKey() {
+        keyLock.lock(); defer { keyLock.unlock() }
+        keyCache = nil
+        UserDefaults.standard.removeObject(forKey: keyDefaultsKey)
+    }
+
+    private func apiKey() async throws -> String {
+        if let cached = readCachedKey() {
+            return cached
         }
 
         let html = try await text(Self.pageURL)
@@ -82,8 +103,7 @@ final class MsnWeatherProvider: WeatherProvider {
             throw ProviderError.decoding("未在 bundle 中找到 weatherAccess")
         }
 
-        keyCache = key
-        UserDefaults.standard.set(key, forKey: keyDefaultsKey)
+        storeCachedKey(key)
         return key
     }
 
@@ -131,10 +151,24 @@ final class MsnWeatherProvider: WeatherProvider {
 
     private struct Envelope: Decodable {
         struct Item: Decodable {
-            struct Response: Decodable { let weather: [Weather] }
+            struct Response: Decodable {
+                let source: Source?
+                let weather: [Weather]
+            }
             let responses: [Response]
         }
         let value: [Item]
+    }
+
+    private struct Source: Decodable {
+        struct Location: Decodable {
+            let timezoneName: String?
+            enum CodingKeys: String, CodingKey {
+                case timezoneName = "TimezoneName"
+            }
+        }
+        let location: Location?
+        let utcOffset: String?
     }
 
     private struct Weather: Decodable {
@@ -150,6 +184,12 @@ final class MsnWeatherProvider: WeatherProvider {
         let baro: Double?
         let uv: Double?
         let vis: Double?
+        let windSpd: Double?
+        let windDir: Double?
+        let windGust: Double?
+        let cloudCover: Double?
+        let rainAmount: Double?
+        let snowAmount: Double?
         let icon: Int?
         let symbol: String?
     }
@@ -176,6 +216,8 @@ final class MsnWeatherProvider: WeatherProvider {
         let uv: Double?
         let vis: Double?
         let precip: Double?
+        let rainAmount: Double?
+        let snowAmount: Double?
         let cloudCover: Double?
         let icon: Int?
         let symbol: String?
@@ -194,8 +236,8 @@ final class MsnWeatherProvider: WeatherProvider {
 
     // MARK: 映射
 
-    private func makePayload(_ weather: Weather, place: Place, days: Int) throws -> ProviderPayload {
-        let timeZone = TimeZone(identifier: place.timezone ?? "") ?? .current
+    private func makePayload(_ weather: Weather, source: Source?, place: Place, days: Int) throws -> ProviderPayload {
+        let timeZone = Self.resolveTimeZone(place: place, source: source)
         let formatter = ISO8601DateFormatter()
         formatter.formatOptions = [.withInternetDateTime]
 
@@ -205,25 +247,32 @@ final class MsnWeatherProvider: WeatherProvider {
         }
 
         let rawHours = (weather.forecast?.days ?? []).flatMap { $0.hourly ?? [] }
-        var hourly: [HourPoint] = []
+        var matchedPairs: [(raw: Hour, point: HourPoint)] = []
         for hour in rawHours {
             guard let date = wall(hour.valid) else { continue }
-            hourly.append(HourPoint(
+            // MSN 的 precip 字段单位是 %（降水概率），实际降水量在 rainAmount / snowAmount（mm）
+            let chance = min(100, max(0, Int((hour.precip ?? 0).rounded())))
+            let precipAmount: Double? = (hour.rainAmount != nil || hour.snowAmount != nil)
+                ? (hour.rainAmount ?? 0) + (hour.snowAmount ?? 0)
+                : nil
+            let point = HourPoint(
                 date: date,
                 temperature: hour.temp ?? 0,
                 code: Self.code(symbol: hour.symbol, icon: hour.icon),
-                // 逐小时只给降水量（mm），降雨概率按降水量估算
-                precipitationChance: (hour.precip ?? 0) > 0 ? min(90, 40 + Int((hour.precip ?? 0) * 20)) : 0,
+                precipitationChance: chance,
                 windSpeed: hour.windSpd ?? 0,
                 humidity: Int((hour.rh ?? 0).rounded()),
                 pressureHPa: hour.baro,
                 dewPoint: hour.dewPt,
                 uvIndex: hour.uv,
                 apparentTemperature: hour.feels,
-                precipitation: hour.precip,
+                precipitation: precipAmount,
                 cloudCover: hour.cloudCover.map { Int($0.rounded()) }
-            ))
+            )
+            matchedPairs.append((hour, point))
         }
+
+        let hourly = matchedPairs.map(\.point)
 
         var daily: [DayPoint] = []
         for day in (weather.forecast?.days ?? []).prefix(max(days, 7)) {
@@ -233,19 +282,28 @@ final class MsnWeatherProvider: WeatherProvider {
                 code: Self.code(symbol: info.symbol, icon: info.icon),
                 minTemperature: info.tempLo ?? 0,
                 maxTemperature: info.tempHi ?? 0,
-                precipitationChance: Int((info.precip ?? 0).rounded()),
+                precipitationChance: min(100, max(0, Int((info.precip ?? 0).rounded()))),
                 uvIndexMax: info.uv ?? 0,
                 windMax: info.windMax ?? 0,
                 gustMax: info.windMax ?? 0
             ))
         }
 
-        guard !hourly.isEmpty else { throw ProviderError.decoding("MSN 无逐小时数据") }
+        guard !matchedPairs.isEmpty else { throw ProviderError.decoding("MSN 无逐小时数据") }
 
         let nowWall = wallNow(timeZone: timeZone)
-        let currentHour = hourly.min {
-            abs($0.date.timeIntervalSince(nowWall)) < abs($1.date.timeIntervalSince(nowWall))
-        } ?? hourly[0]
+        let closest = matchedPairs.min {
+            abs($0.point.date.timeIntervalSince(nowWall)) < abs($1.point.date.timeIntervalSince(nowWall))
+        } ?? matchedPairs[0]
+        let currentHour = closest.point
+        let matchedRaw = closest.raw
+
+        let currentPrecip: Double = {
+            if weather.current?.rainAmount != nil || weather.current?.snowAmount != nil {
+                return (weather.current?.rainAmount ?? 0) + (weather.current?.snowAmount ?? 0)
+            }
+            return currentHour.precipitation ?? 0
+        }()
 
         let current = CurrentConditions(
             date: currentHour.date,
@@ -256,11 +314,11 @@ final class MsnWeatherProvider: WeatherProvider {
             dewPoint: weather.current?.dewPt ?? currentHour.dewPoint ?? currentHour.temperature,
             visibilityMeters: (weather.current?.vis ?? 20) * 1000,
             uvIndex: weather.current?.uv ?? currentHour.uvIndex ?? 0,
-            windSpeed: currentHour.windSpeed,
-            windDirection: rawHours.first?.windDir ?? 0,
-            windGust: rawHours.first?.windGust ?? currentHour.windSpeed,
-            cloudCover: currentHour.cloudCover ?? 0,
-            precipitation: currentHour.precipitation ?? 0,
+            windSpeed: weather.current?.windSpd ?? currentHour.windSpeed,
+            windDirection: weather.current?.windDir ?? matchedRaw.windDir ?? 0,
+            windGust: weather.current?.windGust ?? matchedRaw.windGust ?? currentHour.windSpeed,
+            cloudCover: weather.current?.cloudCover.map { Int($0.rounded()) } ?? currentHour.cloudCover ?? 0,
+            precipitation: currentPrecip,
             isDay: Self.isDay(symbol: weather.current?.symbol, date: currentHour.date),
             code: Self.code(symbol: weather.current?.symbol, icon: weather.current?.icon)
         )
@@ -273,6 +331,33 @@ final class MsnWeatherProvider: WeatherProvider {
             daily: daily,
             alerts: []
         )
+    }
+
+    private static func resolveTimeZone(place: Place, source: Source?) -> TimeZone {
+        if let id = place.timezone, !id.isEmpty, let tz = TimeZone(identifier: id) {
+            return tz
+        }
+        if let name = source?.location?.timezoneName, !name.isEmpty, let tz = TimeZone(identifier: name) {
+            return tz
+        }
+        if let offsetStr = source?.utcOffset, let seconds = parseUTCOffsetSeconds(offsetStr),
+           let tz = TimeZone(secondsFromGMT: seconds) {
+            return tz
+        }
+        return .current
+    }
+
+    private static func parseUTCOffsetSeconds(_ raw: String) -> Int? {
+        let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return nil }
+        let sign = trimmed.hasPrefix("-") ? -1 : 1
+        let unsigned = (trimmed.hasPrefix("-") || trimmed.hasPrefix("+")) ? String(trimmed.dropFirst()) : trimmed
+        let parts = unsigned.split(separator: ":").compactMap { Int($0) }
+        guard !parts.isEmpty else { return nil }
+        let hours = parts[0]
+        let minutes = parts.count > 1 ? parts[1] : 0
+        let seconds = parts.count > 2 ? parts[2] : 0
+        return sign * (hours * 3600 + minutes * 60 + seconds)
     }
 
     private func wallNow(timeZone: TimeZone) -> Date {

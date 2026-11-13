@@ -140,6 +140,7 @@ struct OnboardingView: View {
     @State private var results: [Place] = []
     @State private var searchedText = ""
     @State private var searchTask: Task<Void, Never>?
+    @State private var actionError: String?
     @FocusState private var isSearchFocused: Bool
 
     private let pages: [(title: String, body: String)] = [
@@ -210,6 +211,7 @@ struct OnboardingView: View {
             onLayoutChange?()
         }
         .onChange(of: results.count) { _ in onLayoutChange?() }
+        .onChange(of: actionError) { _ in onLayoutChange?() }
     }
 
     private var searchSection: some View {
@@ -287,12 +289,17 @@ struct OnboardingView: View {
             }
 
             Button {
+                actionError = nil
                 Task {
-                    if let place = try? await store.locator.requestPlace() {
+                    do {
+                        let place = try await store.locator.requestPlace()
                         places.updateCurrentLocation(place)
+                        store.markCurrentLocationUpdated()
                         places.setActive(places.places.first(where: { $0.isCurrentLocation })?.id ?? place.id)
                         await store.refresh(force: true)
                         onFinish()
+                    } catch {
+                        actionError = error.localizedDescription
                     }
                 }
             } label: {
@@ -301,11 +308,19 @@ struct OnboardingView: View {
                     .foregroundStyle(Theme.accentBlue)
             }
             .buttonStyle(.plain)
+
+            if let actionError {
+                Text(actionError)
+                    .font(.system(size: 11.5))
+                    .foregroundStyle(Theme.accentAmber)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
         }
     }
 
     private func scheduleSearch(_ text: String) {
         searchTask?.cancel()
+        actionError = nil
         let trimmed = text.trimmingCharacters(in: .whitespaces)
         guard !trimmed.isEmpty else {
             results = []
@@ -315,11 +330,21 @@ struct OnboardingView: View {
         searchTask = Task {
             try? await Task.sleep(nanoseconds: 300_000_000)
             guard !Task.isCancelled else { return }
-            let found = (try? await GeocodingService.shared.search(text)) ?? []
-            guard !Task.isCancelled else { return }
-            await MainActor.run {
-                results = found
-                searchedText = trimmed
+            do {
+                let found = try await GeocodingService.shared.search(trimmed)
+                guard !Task.isCancelled else { return }
+                await MainActor.run {
+                    results = found
+                    searchedText = trimmed
+                    actionError = nil
+                }
+            } catch {
+                guard !Task.isCancelled else { return }
+                await MainActor.run {
+                    results = []
+                    searchedText = ""
+                    actionError = "搜索失败：\(error.localizedDescription)"
+                }
             }
         }
     }

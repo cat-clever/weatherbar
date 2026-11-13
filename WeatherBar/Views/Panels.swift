@@ -4,6 +4,22 @@
 import SwiftUI
 import Charts
 
+// MARK: - 共用图标组件
+
+private struct WeatherSymbolIcon: View {
+    let code: WeatherCode
+    let isDay: Bool
+    let size: CGFloat
+
+    var body: some View {
+        let colors = code.symbolColors(isDay: isDay)
+        Image(systemName: code.symbolName(isDay: isDay))
+            .font(.system(size: size))
+            .symbolRenderingMode(.palette)
+            .foregroundStyle(colors.0, colors.1)
+    }
+}
+
 // MARK: - 实况区
 
 struct CurrentHeaderView: View {
@@ -79,10 +95,7 @@ struct CurrentHeaderView: View {
             Spacer(minLength: 0)
 
             VStack(alignment: .trailing, spacing: 4) {
-                Image(systemName: snapshot.current.code.symbolName(isDay: snapshot.current.isDay))
-                    .font(.system(size: 38))
-                    .symbolRenderingMode(.palette)
-                    .foregroundStyle(Theme.accentSun, Color.white)
+                WeatherSymbolIcon(code: snapshot.current.code, isDay: snapshot.current.isDay, size: 38)
                     .padding(.bottom, 2)
 
                 statLine("体感温度", Formatters.temperature(snapshot.current.apparentTemperature, unit: prefs.temperatureUnit))
@@ -135,6 +148,7 @@ struct HourlyStripView: View {
     @EnvironmentObject private var prefs: PreferencesStore
     let hours: [HourPoint]
     let now: Date
+    var astro: AstroInfo? = nil
     /// 悬停回调；主面板里传 nil（悬停不弹任何浮窗），浮窗里传保持展开的闭包
     var onHover: ((Bool) -> Void)? = nil
 
@@ -146,7 +160,7 @@ struct HourlyStripView: View {
             onHover: onHover
         ) {
             HStack(spacing: 0) {
-                ForEach(Array(hours.prefix(24).enumerated()), id: \.element.id) { item in
+                ForEach(Array(hours.prefix(24).enumerated()), id: \.offset) { item in
                     let index = item.offset
                     let hour = item.element
                     VStack(spacing: 6) {
@@ -155,10 +169,7 @@ struct HourlyStripView: View {
                             .monospacedDigit()
                             .foregroundStyle(Theme.textSecondary)
 
-                        Image(systemName: hour.code.symbolName(isDay: isDay(hour.date)))
-                            .font(.system(size: 18))
-                            .symbolRenderingMode(.palette)
-                            .foregroundStyle(Theme.accentSun, Color.white)
+                        WeatherSymbolIcon(code: hour.code, isDay: isDay(hour.date), size: 18)
                             .frame(height: 22)
 
                         Text(Formatters.temperatureShort(hour.temperature, unit: prefs.temperatureUnit))
@@ -182,6 +193,16 @@ struct HourlyStripView: View {
     }
 
     private func isDay(_ date: Date) -> Bool {
+        if let sunrise = astro?.sunrise, let sunset = astro?.sunset {
+            let dayStart = WallClock.startOfDay(date)
+            let riseTOD = sunrise.timeIntervalSince(WallClock.startOfDay(sunrise))
+            let setTOD = sunset.timeIntervalSince(WallClock.startOfDay(sunset))
+            let time = date.timeIntervalSince(dayStart)
+            if setTOD >= riseTOD {
+                return time >= riseTOD && time < setTOD
+            }
+            return time >= riseTOD || time < setTOD
+        }
         let hour = WallClock.hour(of: date)
         return hour >= 6 && hour < 18
     }
@@ -204,15 +225,12 @@ struct DailyListView: View {
 
     var body: some View {
         VStack(spacing: 6) {
-            ForEach(Array(days.prefix(7).enumerated()), id: \.element.id) { item in
+            ForEach(Array(days.prefix(7).enumerated()), id: \.offset) { item in
                 let index = item.offset
                 let day = item.element
                 VStack(alignment: .leading, spacing: 4) {
                     HStack(spacing: 8) {
-                        Image(systemName: day.code.symbolName(isDay: true))
-                            .font(.system(size: 15))
-                            .symbolRenderingMode(.palette)
-                            .foregroundStyle(Theme.accentSun, Color.white)
+                        WeatherSymbolIcon(code: day.code, isDay: true, size: 15)
                             .frame(width: 20)
 
                         Text(Formatters.weekday(day.date, index: index))
@@ -507,14 +525,15 @@ struct TrendChartsView: View {
     }
 
     private struct TrendPoint: Identifiable {
-        let id: Date
+        let id: Int
+        let date: Date
         let value: Double
     }
 
     private func points(for metric: TrendMetric) -> [TrendPoint] {
-        hours.compactMap { hour in
+        hours.enumerated().compactMap { offset, hour in
             guard let value = metric.value(hour) else { return nil }
-            return TrendPoint(id: hour.date, value: value)
+            return TrendPoint(id: offset, date: hour.date, value: value)
         }
     }
 
@@ -585,7 +604,7 @@ struct TrendChartsView: View {
         Chart(data) { point in
             if metric.isFilled {
                 AreaMark(
-                    x: .value("时间", point.id),
+                    x: .value("时间", point.date),
                     y: .value(metric.label, point.value)
                 )
                 .interpolationMethod(.catmullRom)
@@ -596,7 +615,7 @@ struct TrendChartsView: View {
             }
 
             LineMark(
-                x: .value("时间", point.id),
+                x: .value("时间", point.date),
                 y: .value(metric.label, point.value)
             )
             .interpolationMethod(.catmullRom)
@@ -605,7 +624,7 @@ struct TrendChartsView: View {
 
             if metric == .wind {
                 PointMark(
-                    x: .value("时间", point.id),
+                    x: .value("时间", point.date),
                     y: .value(metric.label, point.value)
                 )
                 .symbol(.diamond)

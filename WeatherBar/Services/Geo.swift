@@ -12,7 +12,12 @@ final class LocationService: NSObject, ObservableObject {
     @Published private(set) var isLocating = false
 
     private let manager = CLLocationManager()
+    private var activeTask: Task<Place, Error>?
+    private var authContinuation: CheckedContinuation<CLAuthorizationStatus, Never>?
+    private var authTimeoutTask: Task<Void, Never>?
     private var continuation: CheckedContinuation<Place, Error>?
+    private var locationTimeoutTask: Task<Void, Never>?
+    private var currentRequestID: UInt64 = 0
 
     override init() {
         super.init()
@@ -26,32 +31,64 @@ final class LocationService: NSObject, ObservableObject {
     }
 
     func requestPlace() async throws -> Place {
-        if authorizationStatus == .notDetermined {
-            manager.requestWhenInUseAuthorization()
-            // 等待用户在系统弹窗中做选择
-            try? await Task.sleep(nanoseconds: 800_000_000)
-            authorizationStatus = manager.authorizationStatus
+        if let existing = activeTask {
+            return try await existing.value
         }
-        guard isAuthorized else { throw LocationError.denied }
+        let task = Task<Place, Error> { @MainActor [weak self] in
+            guard let self else { throw LocationError.unavailable }
+            defer { self.activeTask = nil }
+            return try await self.performRequestPlace()
+        }
+        activeTask = task
+        return try await task.value
+    }
+
+    private func performRequestPlace() async throws -> Place {
+        let status = await requestAuthorizationIfNeeded()
+        guard status == .authorized || status == .authorizedAlways else {
+            throw LocationError.denied
+        }
 
         isLocating = true
         defer { isLocating = false }
 
+        currentRequestID &+= 1
+        let reqID = currentRequestID
+
         return try await withCheckedThrowingContinuation { continuation in
             self.continuation = continuation
-            manager.requestLocation()
-            // 6 秒兜底超时
-            Task { @MainActor in
-                try? await Task.sleep(nanoseconds: 6_000_000_000)
-                if let pending = self.continuation {
-                    self.continuation = nil
-                    pending.resume(throwing: LocationError.timeout)
-                }
+            self.locationTimeoutTask?.cancel()
+            self.locationTimeoutTask = Task { @MainActor [weak self] in
+                try? await Task.sleep(nanoseconds: 10_000_000_000)
+                guard let self, self.currentRequestID == reqID else { return }
+                self.finish(with: .failure(LocationError.timeout))
+            }
+            self.manager.requestLocation()
+        }
+    }
+
+    private func requestAuthorizationIfNeeded() async -> CLAuthorizationStatus {
+        authorizationStatus = manager.authorizationStatus
+        guard authorizationStatus == .notDetermined else { return authorizationStatus }
+
+        manager.requestWhenInUseAuthorization()
+        return await withCheckedContinuation { continuation in
+            authContinuation = continuation
+            authTimeoutTask?.cancel()
+            authTimeoutTask = Task { @MainActor [weak self] in
+                try? await Task.sleep(nanoseconds: 30_000_000_000)
+                guard let self, let pending = self.authContinuation else { return }
+                self.authContinuation = nil
+                let current = self.manager.authorizationStatus
+                self.authorizationStatus = current
+                pending.resume(returning: current)
             }
         }
     }
 
     fileprivate func finish(with result: Result<Place, Error>) {
+        locationTimeoutTask?.cancel()
+        locationTimeoutTask = nil
         guard let pending = continuation else { return }
         continuation = nil
         switch result {
@@ -78,8 +115,18 @@ enum LocationError: LocalizedError {
 extension LocationService: CLLocationManagerDelegate {
     nonisolated func locationManagerDidChangeAuthorization(_ manager: CLLocationManager) {
         let status = manager.authorizationStatus
-        Task { @MainActor in
+        Task { @MainActor [weak self] in
+            guard let self else { return }
             self.authorizationStatus = status
+            if status != .notDetermined, let pending = self.authContinuation {
+                self.authContinuation = nil
+                self.authTimeoutTask?.cancel()
+                self.authTimeoutTask = nil
+                pending.resume(returning: status)
+            }
+            if !self.isAuthorized, status != .notDetermined {
+                self.finish(with: .failure(LocationError.denied))
+            }
         }
     }
 

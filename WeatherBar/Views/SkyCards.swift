@@ -9,11 +9,14 @@ import SwiftUI
 struct SkyPathCard: View {
     let astro: AstroInfo
     let place: Place
+    var timezoneIdentifier: String? = nil
     var now: Date = Date()
 
     private let horizonRatio: CGFloat = 0.46
 
-    private var timeZone: TimeZone { TimeZone(identifier: place.timezone ?? "") ?? .current }
+    private var timeZone: TimeZone {
+        TimeZone(identifier: timezoneIdentifier ?? place.timezone ?? "") ?? .current
+    }
     private var tzOffset: TimeInterval { TimeInterval(timeZone.secondsFromGMT(for: now)) }
 
     /// 本地 0 点对应的真实时间（曲线横轴 0:00 → 23:59 按当地时间铺满整张卡）
@@ -137,16 +140,15 @@ struct SkyPathCard: View {
     private func markers(size: CGSize, horizonY: CGFloat, scale: CGFloat) -> some View {
         let fraction = min(1, max(0, now.timeIntervalSince(localDayStart) / 86_399))
         let x = min(size.width - 12, max(12, size.width * CGFloat(fraction)))
+        let calculator = AstroCalculator()
+        let moonAltitude = calculator.moonAltitudeAt(now, lat: place.latitude, lon: place.longitude)
+        let sunAltitude = calculator.sunAltitude(now, lat: place.latitude, lon: place.longitude)
 
         return ZStack(alignment: .topLeading) {
-            if let moonAltitude = astro.moonAltitude {
-                MoonDisc(size: 16)
-                    .offset(x: x - 8, y: yFor(altitude: moonAltitude, horizonY: horizonY, scale: scale) - 8)
-            }
-            if let sunAltitude = astro.sunAltitude {
-                SunDisc(size: 18)
-                    .offset(x: x - 9, y: yFor(altitude: sunAltitude, horizonY: horizonY, scale: scale) - 9)
-            }
+            MoonDisc(size: 16)
+                .offset(x: x - 8, y: yFor(altitude: moonAltitude, horizonY: horizonY, scale: scale) - 8)
+            SunDisc(size: 18)
+                .offset(x: x - 9, y: yFor(altitude: sunAltitude, horizonY: horizonY, scale: scale) - 9)
         }
         .frame(width: size.width, height: size.height, alignment: .topLeading)
         .allowsHitTesting(false)

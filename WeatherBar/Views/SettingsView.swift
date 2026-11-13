@@ -100,7 +100,7 @@ struct GeneralSettingsView: View {
                     Button(updater.isBusy ? "更新中…" : "检查更新") {
                         updater.checkForUpdates()
                     }
-                    .disabled(updater.isBusy)
+                    .disabled(updater.isBusy || !updater.canCheckForUpdates)
                 }
 
                 Toggle("自动检查更新", isOn: Binding(
@@ -145,6 +145,7 @@ struct GeneralSettingsView: View {
                 Spacer()
                 Button("清除缓存") {
                     SnapshotCache().clear()
+                    CircuitBreaker.shared.resetAll()
                     Task { await store.refresh(force: true) }
                 }
             }
@@ -162,6 +163,7 @@ struct RegionSettingsView: View {
     @State private var newPlaceQuery = ""
     @State private var searchResults: [Place] = []
     @State private var searchTask: Task<Void, Never>?
+    @State private var statusMessage: String?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
@@ -214,16 +216,27 @@ struct RegionSettingsView: View {
                     .onSubmit { addFirstResult() }
 
                 Button("使用当前位置") {
+                    statusMessage = nil
                     Task {
-                        if let place = try? await store.locator.requestPlace() {
+                        do {
+                            let place = try await store.locator.requestPlace()
                             places.updateCurrentLocation(place)
+                            store.markCurrentLocationUpdated()
                             if let current = places.places.first(where: { $0.isCurrentLocation }) {
                                 places.setActive(current.id)
                             }
                             await store.refresh(force: true)
+                        } catch {
+                            statusMessage = error.localizedDescription
                         }
                     }
                 }
+            }
+
+            if let statusMessage {
+                Text(statusMessage)
+                    .font(.system(size: 11.5))
+                    .foregroundStyle(Theme.accentAmber)
             }
 
             if !searchResults.isEmpty {
@@ -231,10 +244,7 @@ struct RegionSettingsView: View {
                     VStack(alignment: .leading, spacing: 2) {
                         ForEach(searchResults) { place in
                             Button {
-                                places.add(place)
-                                newPlaceQuery = ""
-                                searchResults = []
-                                Task { await store.refresh(force: true) }
+                                addPlace(place)
                             } label: {
                                 HStack {
                                     Text(place.displayName)
@@ -257,6 +267,7 @@ struct RegionSettingsView: View {
 
     private func scheduleSearch(_ text: String) {
         searchTask?.cancel()
+        statusMessage = nil
         guard text.trimmingCharacters(in: .whitespaces).count >= 1 else {
             searchResults = []
             return
@@ -264,18 +275,40 @@ struct RegionSettingsView: View {
         searchTask = Task {
             try? await Task.sleep(nanoseconds: 300_000_000)
             guard !Task.isCancelled else { return }
-            let found = (try? await GeocodingService.shared.search(text)) ?? []
-            guard !Task.isCancelled else { return }
-            await MainActor.run { searchResults = found }
+            do {
+                let found = try await GeocodingService.shared.search(text)
+                guard !Task.isCancelled else { return }
+                await MainActor.run {
+                    searchResults = found
+                    statusMessage = nil
+                }
+            } catch {
+                guard !Task.isCancelled else { return }
+                await MainActor.run {
+                    searchResults = []
+                    statusMessage = error.localizedDescription
+                }
+            }
         }
     }
 
     private func addFirstResult() {
         guard let first = searchResults.first else { return }
-        places.add(first)
-        newPlaceQuery = ""
-        searchResults = []
-        Task { await store.refresh(force: true) }
+        addPlace(first)
+    }
+
+    private func addPlace(_ place: Place) {
+        switch places.add(place) {
+        case .success, .failure(.duplicate):
+            statusMessage = nil
+            newPlaceQuery = ""
+            searchResults = []
+            Task { await store.refresh(force: true) }
+        case .failure(.limitReached(let max)):
+            statusMessage = "最多只能保存 \(max) 个地区"
+        case .failure:
+            statusMessage = "添加失败"
+        }
     }
 }
 
@@ -294,6 +327,7 @@ struct ProviderSettingsView: View {
     @State private var wkServiceID = ""
     @State private var wkPEM = ""
     @State private var testMessage: String?
+    @State private var hasLoaded = false
 
     var body: some View {
         ScrollView {
@@ -322,6 +356,7 @@ struct ProviderSettingsView: View {
                         Button("保存") {
                             KeychainStore.shared.set(qweatherKey, for: .qweatherKey)
                             KeychainStore.shared.set(qweatherHost, for: .qweatherHost)
+                            CircuitBreaker.shared.reset(.qweather)
                             testMessage = "和风天气已保存"
                         }
                         Button("测试连接") { test(.qweather) }
@@ -335,6 +370,7 @@ struct ProviderSettingsView: View {
                     HStack {
                         Button("保存") {
                             KeychainStore.shared.set(seniverseKey, for: .seniverseKey)
+                            CircuitBreaker.shared.reset(.seniverse)
                             testMessage = "心知天气已保存"
                         }
                         Button("测试连接") { test(.seniverse) }
@@ -348,6 +384,7 @@ struct ProviderSettingsView: View {
                     HStack {
                         Button("保存") {
                             KeychainStore.shared.set(amapKey, for: .amapKey)
+                            CircuitBreaker.shared.reset(.amap)
                             testMessage = "高德天气已保存"
                         }
                         Button("测试连接") { test(.amap) }
@@ -360,19 +397,27 @@ struct ProviderSettingsView: View {
                     TextField("Team ID", text: $wkTeamID).textFieldStyle(.roundedBorder)
                     TextField("Key ID", text: $wkKeyID).textFieldStyle(.roundedBorder)
                     TextField("Service ID", text: $wkServiceID).textFieldStyle(.roundedBorder)
-                    SecureField("p8 私钥（-----BEGIN PRIVATE KEY-----…）", text: $wkPEM)
-                        .textFieldStyle(.roundedBorder)
+                    ZStack(alignment: .topLeading) {
+                        TextEditor(text: $wkPEM)
+                            .font(.system(size: 11, design: .monospaced))
+                            .frame(height: 76)
+                            .padding(4)
+                        if wkPEM.isEmpty {
+                            Text("p8 私钥（-----BEGIN PRIVATE KEY-----…）")
+                                .font(.system(size: 11))
+                                .foregroundStyle(.secondary.opacity(0.7))
+                                .padding(.horizontal, 8)
+                                .padding(.vertical, 8)
+                                .allowsHitTesting(false)
+                        }
+                    }
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 6)
+                            .stroke(Color.secondary.opacity(0.3), lineWidth: 1)
+                    )
                     HStack {
                         Button("保存") {
-                            let creds = WeatherKitCredentials(teamID: wkTeamID,
-                                                              keyID: wkKeyID,
-                                                              serviceID: wkServiceID,
-                                                              privateKeyPEM: wkPEM)
-                            if let data = try? JSONEncoder().encode(creds),
-                               let raw = String(data: data, encoding: .utf8) {
-                                KeychainStore.shared.set(raw, for: .weatherKitCredentials)
-                                testMessage = "WeatherKit 凭据已保存"
-                            }
+                            saveWeatherKitCredentials()
                         }
                         Button("测试连接") { test(.weatherKit) }
                     }
@@ -390,6 +435,54 @@ struct ProviderSettingsView: View {
                 }
             }
             .padding(12)
+        }
+        .onAppear { loadCredentials() }
+    }
+
+    private func loadCredentials() {
+        guard !hasLoaded else { return }
+        hasLoaded = true
+        qweatherKey = KeychainStore.shared.string(for: .qweatherKey) ?? ""
+        qweatherHost = KeychainStore.shared.string(for: .qweatherHost) ?? ""
+        seniverseKey = KeychainStore.shared.string(for: .seniverseKey) ?? ""
+        amapKey = KeychainStore.shared.string(for: .amapKey) ?? ""
+        if let raw = KeychainStore.shared.string(for: .weatherKitCredentials),
+           let data = raw.data(using: .utf8),
+           let creds = try? JSONDecoder().decode(WeatherKitCredentials.self, from: data) {
+            wkTeamID = creds.teamID
+            wkKeyID = creds.keyID
+            wkServiceID = creds.serviceID
+            wkPEM = creds.privateKeyPEM
+        }
+    }
+
+    private func saveWeatherKitCredentials() {
+        let team = wkTeamID.trimmingCharacters(in: .whitespacesAndNewlines)
+        let key = wkKeyID.trimmingCharacters(in: .whitespacesAndNewlines)
+        let service = wkServiceID.trimmingCharacters(in: .whitespacesAndNewlines)
+        let pem = wkPEM.trimmingCharacters(in: .whitespacesAndNewlines)
+
+        if team.isEmpty && key.isEmpty && service.isEmpty && pem.isEmpty {
+            KeychainStore.shared.set(nil, for: .weatherKitCredentials)
+            CircuitBreaker.shared.reset(.weatherKit)
+            testMessage = "WeatherKit 凭据已清除"
+            return
+        }
+
+        guard !team.isEmpty, !key.isEmpty, !service.isEmpty, !pem.isEmpty else {
+            testMessage = "请完整填写 Team ID、Key ID、Service ID 和 p8 私钥"
+            return
+        }
+
+        let creds = WeatherKitCredentials(teamID: team,
+                                          keyID: key,
+                                          serviceID: service,
+                                          privateKeyPEM: pem)
+        if let data = try? JSONEncoder().encode(creds),
+           let raw = String(data: data, encoding: .utf8) {
+            KeychainStore.shared.set(raw, for: .weatherKitCredentials)
+            CircuitBreaker.shared.reset(.weatherKit)
+            testMessage = "WeatherKit 凭据已保存"
         }
     }
 
@@ -419,6 +512,7 @@ struct ProviderSettingsView: View {
             do {
                 let start = Date()
                 _ = try await provider.fetch(place: store.currentPlace, hours: 6, days: 3)
+                CircuitBreaker.shared.reset(id)
                 let ms = Int(Date().timeIntervalSince(start) * 1000)
                 await MainActor.run { testMessage = "\(id.displayName) 连接成功 · \(ms) ms" }
             } catch {

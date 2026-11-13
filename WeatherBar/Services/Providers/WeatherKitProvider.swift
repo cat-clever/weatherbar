@@ -25,13 +25,46 @@ enum ES256JWT {
         let payloadData = try JSONSerialization.data(withJSONObject: payload, options: [.sortedKeys])
         let signingInput = "\(base64URL(headerData)).\(base64URL(payloadData))"
 
-        guard let key = try? P256.Signing.PrivateKey(pemRepresentation: pem) else {
+        let normalizedPEM = normalizePEM(pem)
+        guard let key = try? P256.Signing.PrivateKey(pemRepresentation: normalizedPEM) else {
             throw JWTError.invalidKey
         }
         guard let signature = try? key.signature(for: Data(signingInput.utf8)) else {
             throw JWTError.signingFailed
         }
         return "\(signingInput).\(base64URL(signature.rawRepresentation))"
+    }
+
+    /// 兼容从单行文本框、转义换行或含首尾空白粘贴的 .p8 PEM 私钥
+    static func normalizePEM(_ raw: String) -> String {
+        let cleaned = raw
+            .replacingOccurrences(of: "\\n", with: "\n")
+            .replacingOccurrences(of: "\r\n", with: "\n")
+            .replacingOccurrences(of: "\r", with: "\n")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+
+        let beginMarker = "-----BEGIN PRIVATE KEY-----"
+        let endMarker = "-----END PRIVATE KEY-----"
+        guard let beginRange = cleaned.range(of: beginMarker),
+              let endRange = cleaned.range(of: endMarker),
+              beginRange.upperBound <= endRange.lowerBound else {
+            return cleaned
+        }
+
+        let body = cleaned[beginRange.upperBound..<endRange.lowerBound]
+            .components(separatedBy: .whitespacesAndNewlines)
+            .joined()
+        guard !body.isEmpty else { return cleaned }
+
+        var lines: [String] = [beginMarker]
+        var index = body.startIndex
+        while index < body.endIndex {
+            let next = body.index(index, offsetBy: 64, limitedBy: body.endIndex) ?? body.endIndex
+            lines.append(String(body[index..<next]))
+            index = next
+        }
+        lines.append(endMarker)
+        return lines.joined(separator: "\n")
     }
 
     private static func base64URL(_ data: Data) -> String {
@@ -49,7 +82,8 @@ final class WeatherKitProvider: WeatherProvider {
     let attribution = ProviderID.weatherKit.attribution
 
     private let session: URLSession
-    private var cachedToken: (token: String, expiresAt: Date)?
+    private let tokenLock = NSLock()
+    private var cachedToken: (token: String, expiresAt: Date, cacheKey: String)?
 
     init() {
         let config = URLSessionConfiguration.ephemeral
@@ -70,10 +104,18 @@ final class WeatherKitProvider: WeatherProvider {
     func isConfigured() -> Bool { credentials != nil }
 
     private func token() throws -> String {
-        if let cached = cachedToken, cached.expiresAt > Date().addingTimeInterval(60) {
+        guard let creds = credentials else { throw ProviderError.notConfigured(id.displayName) }
+        let cacheKey = "\(creds.teamID)|\(creds.keyID)|\(creds.serviceID)|\(creds.privateKeyPEM)"
+
+        tokenLock.lock()
+        if let cached = cachedToken,
+           cached.cacheKey == cacheKey,
+           cached.expiresAt > Date().addingTimeInterval(60) {
+            tokenLock.unlock()
             return cached.token
         }
-        guard let creds = credentials else { throw ProviderError.notConfigured(id.displayName) }
+        tokenLock.unlock()
+
         let now = Int(Date().timeIntervalSince1970)
         let payload: [String: Any] = [
             "iss": creds.teamID,
@@ -81,9 +123,17 @@ final class WeatherKitProvider: WeatherProvider {
             "exp": now + 3600,
             "sub": creds.serviceID
         ]
-        let header = ["alg": "ES256", "kid": creds.keyID, "typ": "JWT"]
+        let header = [
+            "alg": "ES256",
+            "kid": creds.keyID,
+            "id": "\(creds.teamID).\(creds.serviceID)",
+            "typ": "JWT"
+        ]
         let signed = try ES256JWT.sign(header: header, payload: payload, pem: creds.privateKeyPEM)
-        cachedToken = (signed, Date().addingTimeInterval(3600))
+
+        tokenLock.lock()
+        cachedToken = (signed, Date().addingTimeInterval(3600), cacheKey)
+        tokenLock.unlock()
         return signed
     }
 
@@ -151,16 +201,25 @@ final class WeatherKitProvider: WeatherProvider {
         )
 
         var hourPoints: [HourPoint] = []
-        for h in (raw.forecastHourly?.hours ?? []).prefix(max(hours, 12)) {
+        let todayStart = WallClock.startOfDay(current.date)
+        for h in (raw.forecastHourly?.hours ?? []) {
             guard let date = wallClock(h.forecastStart, timezone: tz) else { continue }
+            guard date >= todayStart else { continue }
             hourPoints.append(HourPoint(
                 date: date,
                 temperature: h.temperature,
                 code: WeatherCodeMapper.wmo(fromWeatherKit: h.conditionCode),
                 precipitationChance: Int(((h.precipitationChance ?? 0) * 100).rounded()),
                 windSpeed: h.windSpeed ?? 0,
-                humidity: Int(((h.humidity ?? 0) * 100).rounded())
+                humidity: Int(((h.humidity ?? 0) * 100).rounded()),
+                pressureHPa: h.pressure,
+                dewPoint: h.temperatureDewPoint,
+                uvIndex: h.uvIndex.map(Double.init),
+                apparentTemperature: h.temperatureApparent,
+                precipitation: h.precipitationAmount,
+                cloudCover: h.cloudCover.map { Int(($0 * 100).rounded()) }
             ))
+            if hourPoints.count >= 24 * 7 { break }
         }
 
         var dayPoints: [DayPoint] = []
@@ -215,6 +274,12 @@ final class WeatherKitProvider: WeatherProvider {
             let precipitationChance: Double?
             let windSpeed: Double?
             let humidity: Double?
+            let pressure: Double?
+            let temperatureDewPoint: Double?
+            let uvIndex: Int?
+            let temperatureApparent: Double?
+            let precipitationAmount: Double?
+            let cloudCover: Double?
         }
         struct Day: Decodable {
             let forecastStart: String

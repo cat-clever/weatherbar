@@ -17,15 +17,32 @@ struct AstroCalculator {
     private let rad = Double.pi / 180
     private let synodicMonth = 29.530588853
 
-    func compute(for date: Date, place: Place) -> AstroInfo {
-        let tz = TimeZone(identifier: place.timezone ?? "") ?? .current
-        let dayStart = WallClock.startOfDay(date)
-        let offsetMinutes = Double(tz.secondsFromGMT(for: date)) / 60.0
+    func compute(for instant: Date, place: Place, timezoneIdentifier: String? = nil) -> AstroInfo {
+        let tz = TimeZone(identifier: timezoneIdentifier ?? place.timezone ?? "") ?? .current
+        let wallInstant = instant.addingTimeInterval(TimeInterval(tz.secondsFromGMT(for: instant)))
+        let dayStart = WallClock.startOfDay(wallInstant)
+        return computeDay(wallDayStart: dayStart, skyInstant: instant, place: place, timeZone: tz)
+    }
 
-        let sunrise = eventTime(dayStart: dayStart, lat: place.latitude, lon: place.longitude,
-                                altitude: -0.833, offsetMinutes: offsetMinutes).rise
-        let sunset = eventTime(dayStart: dayStart, lat: place.latitude, lon: place.longitude,
-                               altitude: -0.833, offsetMinutes: offsetMinutes).set
+    /// 供悬停未来日期使用：`wallDate` 已是「墙钟日期存 UTC 容器」，只算该日升降时刻，不再把 00:00Z 当作真实观测时刻
+    func computeForWallDay(_ wallDate: Date, place: Place, timezoneIdentifier: String? = nil) -> AstroInfo {
+        let tz = TimeZone(identifier: timezoneIdentifier ?? place.timezone ?? "") ?? .current
+        let dayStart = WallClock.startOfDay(wallDate)
+        let roughOffset = tz.secondsFromGMT(for: dayStart)
+        let noonInstant = dayStart.addingTimeInterval(43_200 - TimeInterval(roughOffset))
+        return computeDay(wallDayStart: dayStart, skyInstant: noonInstant, place: place, timeZone: tz)
+    }
+
+    private func computeDay(wallDayStart dayStart: Date, skyInstant: Date, place: Place, timeZone tz: TimeZone) -> AstroInfo {
+        // 用当地正午计算时区偏移，避免夏令时在凌晨切换造成 1 小时误差
+        let roughOffset = tz.secondsFromGMT(for: skyInstant)
+        let noonInstant = dayStart.addingTimeInterval(43_200 - TimeInterval(roughOffset))
+        let offsetMinutes = Double(tz.secondsFromGMT(for: noonInstant)) / 60.0
+
+        let sunEvents = eventTime(dayStart: dayStart, lat: place.latitude, lon: place.longitude,
+                                  altitude: -0.833, offsetMinutes: offsetMinutes)
+        let sunrise = sunEvents.rise
+        let sunset = sunEvents.set
 
         let civil = eventTime(dayStart: dayStart, lat: place.latitude, lon: place.longitude,
                               altitude: -6, offsetMinutes: offsetMinutes)
@@ -34,37 +51,35 @@ struct AstroCalculator {
         let astronomical = eventTime(dayStart: dayStart, lat: place.latitude, lon: place.longitude,
                                      altitude: -18, offsetMinutes: offsetMinutes)
 
-        let blueMorning = eventTime(dayStart: dayStart, lat: place.latitude, lon: place.longitude,
-                                    altitude: -6, offsetMinutes: offsetMinutes).rise
+        let blueMorning = civil.rise
         let goldenMorning = eventTime(dayStart: dayStart, lat: place.latitude, lon: place.longitude,
                                       altitude: -4, offsetMinutes: offsetMinutes).rise
         let goldenEveningStart = eventTime(dayStart: dayStart, lat: place.latitude, lon: place.longitude,
                                            altitude: 6, offsetMinutes: offsetMinutes).set
-        let blueEveningEnd = eventTime(dayStart: dayStart, lat: place.latitude, lon: place.longitude,
-                                       altitude: -6, offsetMinutes: offsetMinutes).set
+        let blueEveningEnd = civil.set
 
-        let solarNoonMinutes = 720.0 - 4.0 * place.longitude - solarParams(julianDay(dayStart.addingTimeInterval(43_200))).eqTime + offsetMinutes
+        let solarNoonMinutes = 720.0 - 4.0 * place.longitude - solarParams(julianDay(noonInstant)).eqTime + offsetMinutes
         let solarNoon = dayStart.addingTimeInterval(solarNoonMinutes * 60)
 
-        let moonTimes = moonRiseSet(dayStart: dayStart, lat: place.latitude, lon: place.longitude)
-        let phase = moonPhase(for: date)
+        let moonTimes = moonRiseSet(wallDayStart: dayStart, lat: place.latitude, lon: place.longitude, offsetMinutes: offsetMinutes)
+        let phase = moonPhase(for: skyInstant)
 
-        let sunNow = sunPosition(date, lat: place.latitude, lon: place.longitude)
-        let moonNow = moonSkyPosition(date, lat: place.latitude, lon: place.longitude)
+        let sunNow = sunPosition(skyInstant, lat: place.latitude, lon: place.longitude)
+        let moonNow = moonSkyPosition(skyInstant, lat: place.latitude, lon: place.longitude)
 
         var daylight: Double?
         if let sunrise, let sunset {
-            daylight = sunset.timeIntervalSince(sunrise)
+            daylight = max(0, sunset.timeIntervalSince(sunrise))
         }
 
         var delta: Double?
         if let todaySunrise = sunrise, let todaySunset = sunset {
             let yesterday = dayStart.addingTimeInterval(-86_400)
-            let yRise = eventTime(dayStart: yesterday, lat: place.latitude, lon: place.longitude,
-                                  altitude: -0.833, offsetMinutes: offsetMinutes).rise
-            let ySet = eventTime(dayStart: yesterday, lat: place.latitude, lon: place.longitude,
-                                 altitude: -0.833, offsetMinutes: offsetMinutes).set
-            if let yRise, let ySet {
+            let yNoon = yesterday.addingTimeInterval(43_200 - TimeInterval(roughOffset))
+            let yOffsetMinutes = Double(tz.secondsFromGMT(for: yNoon)) / 60.0
+            let ySun = eventTime(dayStart: yesterday, lat: place.latitude, lon: place.longitude,
+                                 altitude: -0.833, offsetMinutes: yOffsetMinutes)
+            if let yRise = ySun.rise, let ySet = ySun.set {
                 delta = todaySunset.timeIntervalSince(todaySunrise) - ySet.timeIntervalSince(yRise)
             }
         }
@@ -210,7 +225,9 @@ struct AstroCalculator {
                            lon: Double,
                            altitude: Double,
                            offsetMinutes: Double) -> (rise: Date?, set: Date?) {
-        let jd = julianDay(dayStart.addingTimeInterval(43_200))
+        // 用当地正午对应的真实 UTC 算太阳赤纬与时差
+        let noonInstant = dayStart.addingTimeInterval((720.0 - offsetMinutes) * 60)
+        let jd = julianDay(noonInstant)
         let params = solarParams(jd)
         let latRad = lat * rad
         let declRad = params.decl * rad
@@ -253,19 +270,25 @@ struct AstroCalculator {
         return asin(sin(latRad) * sin(pos.dec) + cos(latRad) * cos(pos.dec) * cos(h)) / rad
     }
 
-    private func moonRiseSet(dayStart: Date, lat: Double, lon: Double) -> (rise: Date?, set: Date?) {
-        var previous = moonAltitude(dayStart, lat: lat, lon: lon)
+    private func moonRiseSet(wallDayStart: Date, lat: Double, lon: Double, offsetMinutes: Double) -> (rise: Date?, set: Date?) {
+        // 先把当地墙钟 0 点转成真实 UTC 时刻去采样地平高度，再把事件转回墙钟容器
+        let realDayStart = wallDayStart.addingTimeInterval(-offsetMinutes * 60)
+        var previous = moonAltitude(realDayStart, lat: lat, lon: lon)
         var rise: Date?
         var set: Date?
         var minute = 5.0
 
         while minute <= 1440 {
-            let current = moonAltitude(dayStart.addingTimeInterval(minute * 60), lat: lat, lon: lon)
+            let current = moonAltitude(realDayStart.addingTimeInterval(minute * 60), lat: lat, lon: lon)
             if previous < 0, current >= 0, rise == nil {
-                rise = dayStart.addingTimeInterval((minute - 2.5) * 60)
+                let frac = current == previous ? 0.5 : abs(previous) / abs(current - previous)
+                let realEvent = realDayStart.addingTimeInterval((minute - 5.0 + 5.0 * frac) * 60)
+                rise = realEvent.addingTimeInterval(offsetMinutes * 60)
             }
             if previous >= 0, current < 0, set == nil {
-                set = dayStart.addingTimeInterval((minute - 2.5) * 60)
+                let frac = current == previous ? 0.5 : abs(previous) / abs(current - previous)
+                let realEvent = realDayStart.addingTimeInterval((minute - 5.0 + 5.0 * frac) * 60)
+                set = realEvent.addingTimeInterval(offsetMinutes * 60)
             }
             previous = current
             minute += 5

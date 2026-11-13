@@ -24,6 +24,8 @@ enum Theme {
     static let accentPrecip = Color(hex: 0x5BA8F7)
     static let accentSun = Color(hex: 0xFFD34D)
     static let accentMoon = Color(hex: 0xD9D8EC)
+    static let accentIce = Color(hex: 0x9BE0FF)
+    static let accentAmber = Color(hex: 0xFFB020)
 
     static let chartLine = Color.white.opacity(0.85)
     static let chartFillTop = Color(hex: 0x2FBDF0).opacity(0.55)
@@ -194,9 +196,36 @@ enum Formatters {
     }
 
     static func windDirectionArrow(_ degrees: Double) -> String {
+        guard degrees.isFinite else { return "·" }
         // 风向为"来向"，箭头指向去向
-        let normalized = (degrees + 180).truncatingRemainder(dividingBy: 360)
+        let shifted = (degrees + 180).truncatingRemainder(dividingBy: 360)
+        let normalized = shifted < 0 ? shifted + 360 : shifted
         let index = Int((normalized + 22.5) / 45) % 8
         return ["↑", "↗", "→", "↘", "↓", "↙", "←", "↖"][index]
+    }
+}
+
+extension WeatherCode {
+    /// 暗色面板中天气图标的双色调色板（主层, 次层）
+    func symbolColors(isDay: Bool) -> (Color, Color) {
+        switch self {
+        case .clear, .mainlyClear:
+            return (isDay ? Theme.accentSun : Theme.accentMoon, .white)
+        case .partlyCloudy:
+            return (.white, isDay ? Theme.accentSun : Theme.accentMoon)
+        case .overcast, .fog, .rimeFog:
+            return (.white, Theme.textSecondary)
+        case .drizzleLight, .drizzleModerate, .drizzleDense,
+             .freezingDrizzleLight, .freezingDrizzleDense,
+             .rainLight, .rainModerate, .rainHeavy,
+             .rainShowersLight, .rainShowersModerate, .rainShowersViolent:
+            return (.white, Theme.accentPrecip)
+        case .freezingRainLight, .freezingRainHeavy,
+             .snowLight, .snowModerate, .snowHeavy, .snowGrains,
+             .snowShowersLight, .snowShowersHeavy:
+            return (.white, Theme.accentIce)
+        case .thunderstorm, .thunderstormHail, .thunderstormHailHeavy:
+            return (.white, Theme.accentSun)
+        }
     }
 }

@@ -3,6 +3,7 @@
 
 import SwiftUI
 import AppKit
+import Combine
 
 // MARK: - 应用环境
 
@@ -38,6 +39,7 @@ final class AppEnvironment {
 
     private var scheduler: RefreshScheduler?
     private var cancellables: [NSObjectProtocol] = []
+    private var bag = Set<AnyCancellable>()
 
     private init() {}
 
@@ -55,6 +57,15 @@ final class AppEnvironment {
             await self?.store.refresh(force: true)
         }
         scheduler?.start()
+
+        bag.removeAll()
+        prefs.$refreshMinutes
+            .dropFirst()
+            .removeDuplicates()
+            .sink { [weak self] minutes in
+                self?.scheduler?.updateInterval(minutes: minutes)
+            }
+            .store(in: &bag)
 
         let observer = NotificationCenter.default.addObserver(
             forName: .weatherBarShowOnboarding, object: nil, queue: .main

@@ -227,7 +227,7 @@ struct RegionSearchView: View {
             }
             .frame(maxHeight: 300)
 
-            if results.isEmpty && !query.isEmpty && !isSearching {
+            if results.isEmpty && !query.isEmpty && !isSearching && message == nil {
                 Text("没有找到匹配的地区")
                     .font(.system(size: 11.5))
                     .foregroundStyle(Theme.textTertiary)
@@ -251,11 +251,20 @@ struct RegionSearchView: View {
         searchTask = Task {
             try? await Task.sleep(nanoseconds: 300_000_000)
             guard !Task.isCancelled else { return }
-            let found = (try? await GeocodingService.shared.search(trimmed)) ?? []
-            guard !Task.isCancelled else { return }
-            await MainActor.run {
-                results = found
-                isSearching = false
+            do {
+                let found = try await GeocodingService.shared.search(trimmed)
+                guard !Task.isCancelled else { return }
+                await MainActor.run {
+                    results = found
+                    isSearching = false
+                }
+            } catch {
+                guard !Task.isCancelled else { return }
+                await MainActor.run {
+                    results = []
+                    isSearching = false
+                    message = "搜索失败：\(error.localizedDescription)"
+                }
             }
         }
     }
@@ -268,8 +277,10 @@ struct RegionSearchView: View {
             message = "该地区已存在，已切换"
         case .failure(.limitReached(let max)):
             message = "最多 \(max) 个地区"
+            return
         case .failure:
             message = "添加失败"
+            return
         }
         Task { await store.refresh(force: true) }
         withAnimation(.easeOut(duration: 0.18)) { router.route = .main }
@@ -279,6 +290,7 @@ struct RegionSearchView: View {
         do {
             let place = try await store.locator.requestPlace()
             places.updateCurrentLocation(place)
+            store.markCurrentLocationUpdated()
             if let current = places.places.first(where: { $0.isCurrentLocation }) {
                 places.setActive(current.id)
             }

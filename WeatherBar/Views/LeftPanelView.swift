@@ -52,9 +52,9 @@ struct LeftPanelView: View {
 
             VStack(spacing: Theme.blockGap) {
                 if showLiveCards {
-                    SkyPathCard(astro: snapshot.astro, place: snapshot.place)
-                    MoonDetailCard(astro: snapshot.astro)
-                    SunDetailCard(astro: snapshot.astro)
+                    SkyPathCard(astro: astro, place: snapshot.place, timezoneIdentifier: snapshot.timezone, now: Date())
+                    MoonDetailCard(astro: astro)
+                    SunDetailCard(astro: astro)
                 }
 
                 if hours.isEmpty {
@@ -65,7 +65,7 @@ struct LeftPanelView: View {
                         .padding(.vertical, 20)
                 } else if !showLiveCards {
                     // 悬停主面板时主面板已经有今天的逐小时，这里不重复
-                    HourlyStripView(hours: hours, now: Date()) { hovering in
+                    HourlyStripView(hours: hours, now: Date(), astro: astro) { hovering in
                         // 浮窗里的逐小时属于浮窗整体，只负责别让它消失
                         if hovering {
                             router.expand()
@@ -101,9 +101,14 @@ struct LeftPanelView: View {
     }
 
     private func astro(in snapshot: WeatherSnapshot, for day: DayPoint?, isToday: Bool) -> AstroInfo {
-        if isToday { return snapshot.astro }
-        guard let day else { return snapshot.astro }
-        return AstroCalculator().compute(for: day.date, place: snapshot.place)
+        let calc = AstroCalculator()
+        if isToday {
+            return calc.compute(for: Date(), place: snapshot.place, timezoneIdentifier: snapshot.timezone)
+        }
+        guard let day else {
+            return calc.compute(for: Date(), place: snapshot.place, timezoneIdentifier: snapshot.timezone)
+        }
+        return calc.computeForWallDay(day.date, place: snapshot.place, timezoneIdentifier: snapshot.timezone)
     }
 
     private func precipitationChance(hours: [HourPoint], day: DayPoint?) -> Int {

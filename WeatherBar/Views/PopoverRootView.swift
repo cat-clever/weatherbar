@@ -43,7 +43,7 @@ struct PopoverRootView: View {
                         RegionSwitcherView()
                     }
 
-                    HourlyStripView(hours: upcomingHours(snapshot), now: Date())
+                    HourlyStripView(hours: upcomingHours(snapshot), now: Date(), astro: snapshot.astro)
 
                     DailyListView(days: snapshot.daily)
 

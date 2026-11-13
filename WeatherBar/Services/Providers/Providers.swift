@@ -150,6 +150,12 @@ final class CircuitBreaker: @unchecked Sendable {
         openUntil[id] = nil
     }
 
+    func reset(_ id: ProviderID) {
+        lock.lock(); defer { lock.unlock() }
+        failureCounts[id] = 0
+        openUntil[id] = nil
+    }
+
     func resetAll() {
         lock.lock(); defer { lock.unlock() }
         failureCounts.removeAll()

@@ -78,8 +78,9 @@ final class KeychainStore: @unchecked Sendable {
     func set(_ value: String?, for key: KeychainKey) {
         lock.lock(); defer { lock.unlock() }
         var values = load()
-        if let value, !value.isEmpty {
-            values[key.rawValue] = value
+        if let trimmed = value?.trimmingCharacters(in: .whitespacesAndNewlines),
+           !trimmed.isEmpty {
+            values[key.rawValue] = trimmed
         } else {
             values.removeValue(forKey: key.rawValue)
         }
@@ -144,12 +145,16 @@ final class PreferencesStore: ObservableObject {
 final class SnapshotCache {
     private let directory: URL
 
-    init() {
-        let base = FileManager.default.urls(for: .applicationSupportDirectory,
-                                            in: .userDomainMask).first
-            ?? URL(fileURLWithPath: NSTemporaryDirectory())
-        directory = base.appendingPathComponent("WeatherBar/cache", isDirectory: true)
-        try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+    init(directory: URL? = nil) {
+        if let directory {
+            self.directory = directory
+        } else {
+            let base = FileManager.default.urls(for: .applicationSupportDirectory,
+                                                in: .userDomainMask).first
+                ?? URL(fileURLWithPath: NSTemporaryDirectory())
+            self.directory = base.appendingPathComponent("WeatherBar/cache", isDirectory: true)
+        }
+        try? FileManager.default.createDirectory(at: self.directory, withIntermediateDirectories: true)
     }
 
     private func url(provider: ProviderID, placeID: UUID) -> URL {
@@ -169,6 +174,23 @@ final class SnapshotCache {
 
     func loadLast() -> WeatherSnapshot? {
         loadFile(directory.appendingPathComponent("last.json"))
+    }
+
+    func loadLatest(forPlaceID placeID: UUID, preferredProvider: ProviderID? = nil) -> WeatherSnapshot? {
+        let suffix = "-\(placeID.uuidString).json"
+        let files = (try? FileManager.default.contentsOfDirectory(at: directory, includingPropertiesForKeys: nil)) ?? []
+        let candidates = files
+            .filter { $0.lastPathComponent.hasSuffix(suffix) }
+            .compactMap(loadFile)
+        if candidates.isEmpty, let last = loadLast(), last.place.id == placeID {
+            return last
+        }
+        return candidates.max { lhs, rhs in
+            if lhs.fetchedAt != rhs.fetchedAt {
+                return lhs.fetchedAt < rhs.fetchedAt
+            }
+            return rhs.servedBy == preferredProvider && lhs.servedBy != preferredProvider
+        }
     }
 
     private func loadFile(_ url: URL) -> WeatherSnapshot? {

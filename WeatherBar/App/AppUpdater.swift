@@ -88,7 +88,7 @@ final class AppUpdater: NSObject, ObservableObject {
 
     /// 手动检查更新：有新版时 Sparkle 弹窗，点「安装更新」即自动下载 + 替换 + 重启。
     func checkForUpdates() {
-        guard !isBusy else { return }
+        guard !isBusy, controller.updater.canCheckForUpdates else { return }
         phase = .checking
         controller.updater.checkForUpdates()
     }
@@ -192,15 +192,38 @@ extension AppUpdater: SPUUpdaterDelegate {
         return true
     }
 
+    nonisolated func updater(_ updater: SPUUpdater, didFinishUpdateCycleFor updateCheck: SPUUpdateCheck,
+                            error: Error?) {
+        Task { @MainActor [weak self] in
+            guard let self else { return }
+            switch self.phase {
+            case .checking, .found, .downloading, .installing:
+                if error == nil {
+                    self.phase = .idle
+                }
+            default:
+                break
+            }
+        }
+    }
+
     nonisolated func updater(_ updater: SPUUpdater, didAbortWithError error: Error) {
         let nsError = error as NSError
         let isSparkleError = nsError.domain == SUSparkleErrorDomain
 
-        // 无更新 / 用户取消 不当作失败
-        if isSparkleError && (nsError.code == SparkleErrorCode.noUpdate
-            || nsError.code == SparkleErrorCode.updateCheckDeclined) {
+        // 无更新 不当作失败
+        if isSparkleError && nsError.code == SparkleErrorCode.noUpdate {
             Task { @MainActor [weak self] in
                 self?.phase = .upToDate
+            }
+            return
+        }
+
+        // 用户取消 检查/安装 不当作失败
+        if isSparkleError && (nsError.code == SparkleErrorCode.updateCheckDeclined
+            || nsError.code == SparkleErrorCode.installationCanceled) {
+            Task { @MainActor [weak self] in
+                self?.phase = .idle
             }
             return
         }
@@ -225,4 +248,5 @@ private enum SparkleErrorCode {
     static let runningFromDiskImage = 1003
     static let runningTranslocated = 1005
     static let updateCheckDeclined = 1008
+    static let installationCanceled = 4007
 }

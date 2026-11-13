@@ -12,7 +12,7 @@ enum WeatherCodeMapper {
         switch icon {
         case "100", "150": return .clear
         case "102", "152": return .mainlyClear
-        case "101", "103", "153": return .partlyCloudy
+        case "101", "103", "151", "153": return .partlyCloudy
         case "104", "154": return .overcast
         case "300", "350": return .rainShowersLight
         case "301", "351": return .rainShowersModerate
@@ -93,7 +93,7 @@ enum WeatherCodeMapper {
 
     static func wmo(fromWeatherKit condition: String) -> WeatherCode {
         switch condition.lowercased() {
-        case "clear": return .clear
+        case "clear", "hot", "frigid": return .clear
         case "mostlyclear": return .mainlyClear
         case "partlycloudy": return .partlyCloudy
         case "mostlycloudy", "cloudy": return .overcast
@@ -105,6 +105,7 @@ enum WeatherCodeMapper {
         case "freezingdrizzle": return .freezingDrizzleLight
         case "freezingrain", "sleet", "wintrymix": return .freezingRainLight
         case "snow", "flurries": return .snowLight
+        case "sunflurries": return .snowShowersLight
         case "heavysnow", "blizzard", "blowingsnow": return .snowHeavy
         case "sunshowers": return .rainShowersLight
         case "isolatedthunderstorms", "scatteredthunderstorms",
